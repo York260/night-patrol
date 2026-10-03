@@ -1,0 +1,15 @@
+{
+  "name": "night-patrol",
+  "version": "1.0.0",
+  "private": true,
+  "description": "夜巡守則：規則怪談網頁遊戲",
+  "scripts": {
+    "validate": "node tools/validate.mjs",
+    "build": "node tools/build-artifact.mjs",
+    "test": "node tools/validate.mjs && node tests/playthrough.cjs",
+    "serve": "npx serve ."
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}

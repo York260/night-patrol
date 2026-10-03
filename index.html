@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- BEGIN HEAD -->
+<title>夜巡守則</title>
+<meta name="description" content="規則怪談解謎遊戲：在福安大廈值三個夜班，判斷哪些守則是真的。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cactus+Classical+Serif&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Iansui&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap">
+<!-- END HEAD -->
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<!-- BEGIN APP -->
+<div class="scanlines" aria-hidden="true"></div>
+<div class="vignette" aria-hidden="true"></div>
+
+<section id="title-screen" class="screen title-screen">
+  <div class="title-wrap">
+    <h1 class="title-vert">夜巡守則</h1>
+    <div class="title-card">
+      <p class="eyebrow">福安大廈・夜間保全</p>
+      <p class="title-lede">本守則共 8 條。<br>照著做，就不會有事。</p>
+      <div class="title-actions">
+        <button type="button" id="btn-continue" class="btn primary" hidden>繼續值班</button>
+        <button type="button" id="btn-new" class="btn primary">開始值班</button>
+        <button type="button" id="btn-gallery" class="btn">結局收藏<span id="ending-count" class="btn-aside">0 / 12</span></button>
+        <button type="button" id="btn-sound-title" class="btn ghost">聲音：開</button>
+      </div>
+      <p class="title-note">建議戴上耳機。三個夜晚，約 20 至 30 分鐘。<br>內含輕度恐怖描寫。</p>
+    </div>
+  </div>
+</section>
+
+<section id="game-screen" class="screen game" hidden>
+  <header class="topbar">
+    <div class="tb-time">
+      <span id="tb-night" class="tb-night">第一夜</span>
+      <span id="tb-clock" class="tb-clock">22:00</span>
+    </div>
+    <div class="tb-stats">
+      <div class="tb-stat">
+        <span class="lbl">理智</span>
+        <span id="san-meter" class="meter" role="meter" aria-label="理智" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="san-bar"></i></span>
+        <span id="san-num" class="num">100</span>
+      </div>
+      <div class="tb-stat">
+        <span class="lbl">手電筒</span>
+        <span id="bat-cells" class="cells" role="img" aria-label="手電筒電量"></span>
+      </div>
+      <div class="tb-stat">
+        <span class="lbl">打卡</span>
+        <span id="cp-num" class="num">0 / 5</span>
+      </div>
+    </div>
+    <div class="tb-actions">
+      <button type="button" id="btn-map" class="tb-btn" data-sheet="map-panel">大樓</button>
+      <button type="button" id="btn-sound" class="tb-btn">聲音：開</button>
+      <button type="button" id="btn-menu" class="tb-btn">選單</button>
+    </div>
+  </header>
+
+  <div class="game-body">
+    <aside id="map-panel" class="panel map-panel" aria-label="大樓剖面">
+      <div class="panel-head">
+        <h2>福安大廈</h2>
+        <button type="button" class="sheet-close">關閉</button>
+      </div>
+      <div id="map" class="map"></div>
+      <ul class="legend">
+        <li><i class="lg-you"></i>你的位置</li>
+        <li><i class="lg-cp done"></i>已打卡</li>
+        <li><i class="lg-cp"></i>未打卡</li>
+      </ul>
+      <p class="map-note">地下一層，地上六層。沒有 4 樓。</p>
+    </aside>
+
+    <main id="scene" class="scene" aria-live="polite"></main>
+
+    <aside id="desk" class="panel desk" aria-label="守則與線索">
+      <div class="panel-head">
+        <div class="desk-tabs" role="tablist">
+          <button type="button" role="tab" data-tab="rules" aria-selected="true">守則</button>
+          <button type="button" role="tab" data-tab="clues" aria-selected="false">線索<span id="clue-badge" class="badge" hidden></span></button>
+        </div>
+        <button type="button" class="sheet-close">關閉</button>
+      </div>
+      <div id="desk-rules" class="desk-body">
+        <div class="hb-switch">
+          <button type="button" data-view="now" aria-pressed="true">今晚的守則</button>
+          <button type="button" data-view="photo" aria-pressed="false">手機照片：第一夜</button>
+        </div>
+        <div id="handbook" class="handbook"></div>
+      </div>
+      <div id="desk-clues" class="desk-body" hidden>
+        <div id="clues" class="clues"></div>
+      </div>
+    </aside>
+  </div>
+
+  <nav class="mobile-nav" aria-label="面板">
+    <button type="button" data-sheet="map-panel">大樓</button>
+    <button type="button" data-sheet="desk" data-tab="rules">守則<span id="nav-rule-badge" class="badge" hidden></span></button>
+    <button type="button" data-sheet="desk" data-tab="clues">線索<span id="nav-clue-badge" class="badge" hidden></span></button>
+  </nav>
+  <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+</section>
+
+<section id="ending-screen" class="screen ending-screen" hidden>
+  <div class="end-wrap">
+    <p class="end-meta"><span id="end-no">結局</span><span id="end-kind" class="end-kind"></span></p>
+    <h2 id="end-title" class="end-title"></h2>
+    <div id="end-text" class="end-text"></div>
+    <p id="end-hint" class="end-hint"></p>
+    <div class="end-actions">
+      <button type="button" id="btn-retry" class="btn primary">重來這一夜</button>
+      <button type="button" id="btn-end-gallery" class="btn">結局收藏</button>
+      <button type="button" id="btn-end-title" class="btn ghost">回到標題</button>
+    </div>
+  </div>
+</section>
+
+<section id="menu" class="overlay" role="dialog" aria-modal="true" aria-labelledby="menu-title" hidden>
+  <div class="overlay-card">
+    <h2 id="menu-title">暫停值班</h2>
+    <p class="overlay-note">每個整點都會自動存檔。回到標題後，可以從「繼續值班」接著玩。</p>
+    <div class="overlay-actions">
+      <button type="button" id="btn-menu-resume" class="btn primary">回到崗位</button>
+      <button type="button" id="btn-menu-retry" class="btn">重來這一夜</button>
+      <button type="button" id="btn-menu-title" class="btn ghost">回到標題</button>
+    </div>
+  </div>
+</section>
+
+<section id="gallery" class="overlay" role="dialog" aria-modal="true" aria-labelledby="gallery-title" hidden>
+  <div class="overlay-card wide">
+    <div class="overlay-head">
+      <h2 id="gallery-title">結局收藏</h2>
+      <span id="gallery-count" class="overlay-note"></span>
+    </div>
+    <ol id="gallery-grid" class="g-grid"></ol>
+    <button type="button" id="btn-gallery-close" class="btn">關閉</button>
+  </div>
+</section>
+<!-- END APP -->
+<script src="js/content.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
