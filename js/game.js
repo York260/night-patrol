@@ -62,8 +62,9 @@
   };
 
   class Ending {
-    constructor(id) {
+    constructor(id, where = null) {
       this.id = id;
+      this.where = where; // 出事的地點，只有標出死因時會用到
     }
   }
 
@@ -429,8 +430,8 @@
     toast(`${C.LOCATIONS[dest].label} 打卡完成`);
   }
 
-  function checkSan() {
-    if (S.san <= 0) throw new Ending('E_SAN');
+  function checkSan(where = S.loc) {
+    if (S.san <= 0) throw new Ending('E_SAN', where);
   }
 
   function findEvent(at, ctx = {}) {
@@ -479,12 +480,13 @@
         tone: ev.at === 'lock' || ev.at === 'lockout' ? 'dark' : '',
       });
       const res = options[i].res || {};
+      const chosenAt = S.loc;
       applyResult(res, ctx);
       if (res.text) {
         await scene({ kickerText: kicker(), paras: lines(res.text, ctx), choices: [{ t: '繼續' }] });
       }
       if (res.end) throw new Ending(typeof res.end === 'function' ? res.end(S) : res.end);
-      checkSan();
+      checkSan(chosenAt);
       id = res.next || null;
     }
   }
@@ -565,8 +567,8 @@
     changeSan(DARK_SAN);
     renderStatus();
     await scene({ kickerText: kicker(), paras: C.DARK, choices: [{ t: '繼續' }], tone: 'dark' });
-    S.loc = 'guard';
     checkSan();
+    S.loc = 'guard';
   }
 
   async function resolveHour({ dest, mode }) {
@@ -741,7 +743,7 @@
         await fn();
       } catch (err) {
         if (mine !== flow) return;
-        if (err instanceof Ending) showEnding(err.id);
+        if (err instanceof Ending) showEnding(err.id, err.where);
         else console.error(err);
       }
     })();
@@ -754,7 +756,7 @@
     return Array.isArray(list) ? list.filter((id) => C.ENDINGS[id]) : [];
   }
 
-  function showEnding(id) {
+  function showEnding(id, where = null) {
     const e = C.ENDINGS[id];
     const found = foundEndings();
     if (!found.includes(id)) store.set(KEYS.endings, [...found, id]);
@@ -767,6 +769,12 @@
     $('end-kind').textContent = e.kind;
     $('end-kind').dataset.kind = e.kind;
     $('end-title').textContent = e.title;
+    const cause = $('end-cause');
+    cause.hidden = !e.cause;
+    if (e.cause) {
+      const loc = C.LOCATIONS[where || S.loc] || C.LOCATIONS.guard;
+      cause.textContent = `死因：${e.cause}（${NIGHT_NAMES[S.night]} ${pad(HOURS[S.hi])}・${loc.name}）`;
+    }
     const body = $('end-text');
     body.innerHTML = '';
     lines(e.text).forEach((p, i) => {

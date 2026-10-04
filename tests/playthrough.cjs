@@ -255,6 +255,51 @@ async function run() {
   assert.equal(await page.locator('#gallery-count').textContent(), '已解鎖 3 / 12');
   console.log('✓ 結局收藏：已解鎖 3 / 12');
 
+  /* 路線四：理智不足時上七樓（直接載入第三夜 05:00 的存檔） */
+  {
+    const d = driver(page);
+    const SHAKY = '你的手抖得快握不住手電筒';
+    const at0500 = async (san) => {
+      const st = {
+        v: 1, name: '阿明', night: 3, hi: 7, san, bat: 3, loc: 'guard', cps: [], clues: ['c1', 'c4'],
+        flags: [], seen: [], marks: {}, warnings: 0, missed: 0, tonightClues: [],
+      };
+      await page.evaluate((s) => localStorage.setItem('np-save-v1', JSON.stringify({ S: s, base: s })), st);
+      await page.reload();
+      await page.click('#btn-continue');
+      await d.clock('05:00');
+      await d.go('7F');
+    };
+
+    await at0500(40);
+    await d.sceneHas('第十三個畫面裡的那條走廊');
+    assert.equal(await page.locator('#scene', { hasText: SHAKY }).count(), 0);
+    console.log('✓ 路線四之一：理智 40 上七樓，沒有警告');
+
+    await at0500(15);
+    await d.sceneHas(SHAKY);
+    await d.choose('轉身下樓');
+    await d.cont();
+    await d.choose('不簽，直接離開');
+    await page.locator('#ending-screen').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#end-title').textContent(), '天亮了');
+    assert.equal(await page.locator('#end-cause').isVisible(), false);
+    console.log('✓ 路線四之二：理智 15 出現警告，折返 → 結局「天亮了」');
+
+    await at0500(15);
+    await d.choose('照著自己的影子');
+    await d.choose('繼續照著影子往前走');
+    await d.choose('我是來交班的');
+    await d.cont();
+    await d.choose('耳東陳');
+    await d.choose('繼續照著影子往前走，不回頭');
+    await d.cont();
+    await page.locator('#ending-screen').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#end-title').textContent(), '新的住戶');
+    assert.equal(await page.locator('#end-cause').textContent(), '死因：理智歸零（第三夜 05:00・7F）');
+    console.log('✓ 路線四之三：理智 15 硬闖 → 「新的住戶」，畫面標出死因');
+  }
+
   await browser.close();
   if (problems.length) {
     problems.forEach((p) => console.error(p));

@@ -1232,6 +1232,20 @@ body[data-san="crit"] .revealed .scene-text p:not(.sys) {
   text-wrap: balance;
 }
 
+.end-title:has(+ .end-cause:not([hidden])) {
+  margin-bottom: 14px;
+}
+
+.end-cause {
+  margin: 0 0 28px;
+  padding: 6px 12px;
+  border-left: 2px solid var(--danger);
+  font-family: var(--font-ui);
+  font-size: var(--step--1);
+  letter-spacing: 0.06em;
+  color: var(--danger);
+}
+
 .end-text p {
   margin: 0 0 1em;
   font-size: var(--step-1);
