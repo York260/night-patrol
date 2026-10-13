@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- BEGIN HEAD -->
+<title>夜巡守則・七樓</title>
+<meta name="description" content="第一人稱 3D 規則怪談：在福安大廈值三個夜班，守則會被竄改。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cactus+Classical+Serif&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Iansui&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap">
+<!-- END HEAD -->
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<!-- BEGIN APP -->
+<canvas id="view" aria-label="遊戲畫面"></canvas>
+
+<div id="boot" class="boot"><p id="boot-msg">正在載入……</p></div>
+
+<section id="title" class="screen title" hidden>
+  <div class="title-wrap">
+    <h1 class="title-vert">夜巡守則</h1>
+    <div class="title-card">
+      <p class="eyebrow">福安大廈・夜間保全・第一人稱</p>
+      <p class="title-sub">七樓</p>
+      <p class="title-lede">本守則共 8 條。<br>照著做，就不會有事。</p>
+      <div class="title-actions">
+        <button type="button" id="btn-continue" class="btn primary" hidden>繼續值班</button>
+        <button type="button" id="btn-new" class="btn primary">開始值班</button>
+        <button type="button" id="btn-gallery" class="btn">結局收藏<span id="ending-count" class="btn-aside">0 / 12</span></button>
+        <button type="button" id="btn-help" class="btn">操作說明</button>
+        <button type="button" id="btn-sound" class="btn ghost">聲音：開</button>
+      </div>
+      <p class="title-note">請戴上耳機，聲音有方向。三個夜晚，約 30 分鐘。<br>內含恐怖描寫與突然的聲響。</p>
+    </div>
+  </div>
+</section>
+
+<div id="hud" class="hud" hidden>
+  <div class="hud-tl">
+    <p class="hud-time"><span id="hud-night">第一夜</span><span id="hud-clock" class="hud-clock">22:00</span></p>
+    <p id="hud-obj" class="hud-obj"></p>
+  </div>
+  <div class="hud-tr">
+    <div id="hud-san" class="hud-san" data-level="ok"><span class="lbl">理智</span><span class="bar"><i id="hud-san-bar"></i></span></div>
+    <div class="hud-row"><span class="lbl">手電筒</span><span id="hud-bat" class="hud-bat"><i></i><i></i><i></i><i></i><i></i></span></div>
+    <div class="hud-row"><span class="lbl">打卡</span><span id="hud-cp" class="num">0 / 5</span></div>
+  </div>
+  <div class="crosshair" aria-hidden="true"></div>
+  <p id="prompt" class="prompt" hidden><span id="prompt-key" class="key">E</span><span id="prompt-text"></span></p>
+  <p id="subtitle" class="subtitle" hidden></p>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <button type="button" id="click-hint" class="click-hint" hidden>點一下畫面，繼續值班</button>
+</div>
+
+<div id="touch" class="touch" hidden>
+  <div id="joy" class="joy" hidden><div id="joy-knob" class="joy-knob"></div></div>
+  <div class="touch-right">
+    <button type="button" id="touch-use" class="t-btn t-use">互動</button>
+    <button type="button" id="touch-flash" class="t-btn">手電筒</button>
+  </div>
+  <div class="touch-top">
+    <button type="button" id="touch-book" class="t-btn small">守則<span id="book-badge" class="badge" hidden></span></button>
+    <button type="button" id="touch-menu" class="t-btn small">選單</button>
+  </div>
+</div>
+
+<section id="choice" class="overlay choice" hidden>
+  <div class="choice-card">
+    <p id="choice-prompt" class="choice-prompt"></p>
+    <div id="choice-list" class="choice-list"></div>
+    <p class="choice-help">數字鍵或滑鼠上下選擇，點擊或 E 確認</p>
+  </div>
+</section>
+
+<section id="note" class="overlay" hidden>
+  <div id="note-card" class="note-card">
+    <h2 id="note-title"></h2>
+    <p id="note-text"></p>
+    <button type="button" id="note-close" class="btn">收起來</button>
+  </div>
+</section>
+
+<section id="sign" class="overlay" hidden>
+  <form id="sign-form" class="sign-card" autocomplete="off">
+    <p class="sign-head">值班日誌・上班</p>
+    <label for="sign-name">在上班欄簽下你的名字</label>
+    <input id="sign-name" name="sign-name" maxlength="8" placeholder="你的名字">
+    <button type="submit" class="btn primary">簽名</button>
+  </form>
+</section>
+
+<section id="card" class="overlay card" hidden>
+  <div class="card-wrap">
+    <p id="card-kicker" class="card-kicker"></p>
+    <h2 id="card-title" class="card-title"></h2>
+    <div id="card-lines" class="card-lines"></div>
+    <dl id="card-stats" class="stats" hidden></dl>
+    <button type="button" id="card-go" class="btn primary">繼續</button>
+  </div>
+</section>
+
+<section id="book" class="overlay book" hidden>
+  <div class="book-wrap">
+    <div class="book-head">
+      <div class="bk-tabs" role="tablist">
+        <button type="button" class="bk-tab" role="tab" data-tab="rules" aria-selected="true">守則</button>
+        <button type="button" class="bk-tab" role="tab" data-tab="clues" aria-selected="false">線索</button>
+      </div>
+      <button type="button" id="book-close" class="btn ghost">收起（H）</button>
+    </div>
+    <div id="book-rules-wrap">
+      <div class="bk-switch">
+        <button type="button" class="bk-view" data-view="now" aria-pressed="true">今晚的守則</button>
+        <button type="button" class="bk-view" data-view="photo" aria-pressed="false">手機照片：第一夜</button>
+      </div>
+      <div id="book-rules" class="handbook"></div>
+    </div>
+    <div id="book-clues" class="clues" hidden></div>
+  </div>
+</section>
+
+<section id="pause" class="overlay" hidden>
+  <div class="panel-card">
+    <h2>暫停值班</h2>
+    <p class="panel-note">遊戲會在每一夜開始時存檔。</p>
+    <label class="sens" for="sens">視角靈敏度<input id="sens" type="range" min="0.4" max="2.2" step="0.1" value="1"></label>
+    <div class="panel-actions">
+      <button type="button" id="pause-resume" class="btn primary">回到崗位</button>
+      <button type="button" id="pause-retry" class="btn">重來這一夜</button>
+      <button type="button" id="pause-help" class="btn">操作說明</button>
+      <button type="button" id="pause-sound" class="btn">聲音：開</button>
+      <button type="button" id="pause-title" class="btn ghost">回到標題</button>
+    </div>
+  </div>
+</section>
+
+<section id="ending" class="screen ending" hidden>
+  <div class="end-wrap">
+    <p class="end-meta"><span id="end-no">結局</span><span id="end-kind" class="end-kind"></span></p>
+    <h2 id="end-title" class="end-title"></h2>
+    <p id="end-cause" class="end-cause" hidden></p>
+    <div id="end-text" class="end-text"></div>
+    <p id="end-hint" class="end-hint"></p>
+    <div class="end-actions">
+      <button type="button" id="end-retry" class="btn primary">重來這一夜</button>
+      <button type="button" id="end-gallery" class="btn">結局收藏</button>
+      <button type="button" id="end-title-btn" class="btn ghost">回到標題</button>
+    </div>
+  </div>
+</section>
+
+<section id="gallery" class="overlay" hidden>
+  <div class="panel-card wide">
+    <div class="panel-head"><h2>結局收藏</h2><span id="gallery-count" class="panel-note"></span></div>
+    <ol id="gallery-grid" class="g-grid"></ol>
+    <button type="button" id="gallery-close" class="btn">關閉</button>
+  </div>
+</section>
+
+<section id="help" class="overlay" hidden>
+  <div class="panel-card wide">
+    <h2>操作說明</h2>
+    <div class="table-wrap">
+      <table class="help-table">
+        <thead><tr><th scope="col">動作</th><th scope="col">鍵盤與滑鼠</th><th scope="col">手機</th></tr></thead>
+        <tbody id="help-rows"></tbody>
+      </table>
+    </div>
+    <p class="panel-note">守則就是你唯一的武器。有些條文會被換掉，有些紅筆字不是原本的人寫的。</p>
+    <button type="button" id="help-close" class="btn">關閉</button>
+  </div>
+</section>
+<!-- END APP -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script>window.THREE || document.write('<script src="https://unpkg.com/three@0.149.0/build/three.min.js"><\/script>');</script>
+<script src="js/data.js"></script>
+<script src="js/textures.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/world.js"></script>
+<script src="js/director.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
