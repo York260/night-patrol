@@ -78,6 +78,11 @@ window.NP3D_WORLD = (() => {
       suit: lam(null, { color: 0x1b1b20 }),
       skin: lam(null, { color: 0x6b5b50 }),
       face: lam(TEX.paperFace()),
+      hair: lam(null, { color: 0x0b0a0a }),
+      puddle: new THREE.MeshPhongMaterial({ color: 0x0a0c0d, specular: 0x8a8f90, shininess: 80, transparent: true, opacity: 0.85 }),
+      flowers: lam(null, { color: 0xe8e4da }),
+      flowersY: lam(null, { color: 0xd8b84a }),
+      led: new THREE.MeshBasicMaterial({ color: 0xff2a1a }),
       punch: lam(TEX.punchClock()),
       smoke: new THREE.PointsMaterial({ map: TEX.smoke(), size: 0.9, color: 0x8f8a80, transparent: true, opacity: 0.35, depthWrite: false }),
       invisible: new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }),
@@ -266,92 +271,321 @@ window.NP3D_WORLD = (() => {
     return out;
   }
 
-  /* ================================================================ 人影 */
+  /* ================================================================ 人物 */
 
   /**
-   * kind：adult | child | woman | tall | guard | boss | chen
-   * 全部用簡單幾何組成；在手電筒光圈外只是一團黑影。
+   * 有骨架的人物：骨盆、脊椎、頸、頭、肩、肘、手、髖、膝、腳，全部是可轉動的節點。
+   * kind：adult | child | woman | tall | guard | boss | chen | self
+   * o：seated | floor | crouch（姿勢）、paperFace（守則臉）、tag（名牌文字）、variant（衣服顏色）
+   * 動畫由 userData.update(dt, t, camPos) 驅動，模式見 setAnim。
    */
+  const PROFILE = {
+    adult: { h: 1.72, leg: 1, torso: 1, girth: 1, arm: 1, head: 1, hand: 1 },
+    child: { h: 1.18, leg: 0.86, torso: 0.92, girth: 0.92, arm: 0.92, head: 1.38, hand: 0.9 },
+    woman: { h: 1.62, leg: 1, torso: 0.98, girth: 0.86, arm: 0.98, head: 1, hand: 0.9 },
+    tall: { h: 2.25, leg: 1.04, torso: 1.02, girth: 0.74, arm: 1.5, head: 1.02, hand: 2.4 },
+    guard: { h: 1.74, leg: 1, torso: 1, girth: 1.02, arm: 1, head: 1, hand: 1 },
+    boss: { h: 1.72, leg: 1, torso: 1, girth: 1.08, arm: 1, head: 1, hand: 1 },
+    chen: { h: 1.7, leg: 1, torso: 1, girth: 0.98, arm: 1, head: 1, hand: 1 },
+    self: { h: 1.72, leg: 1, torso: 1, girth: 1, arm: 1, head: 1, hand: 1 },
+  };
+
+  function figureMats(M, kind, o) {
+    const TEX = window.NP3D_TEX;
+    M._fig = M._fig || {};
+    const key = `${kind}|${o.variant || 0}|${o.paperFace ? 1 : 0}`;
+    if (M._fig[key]) return M._fig[key];
+    const lam = (map, color) => new THREE.MeshLambertMaterial(map ? { map } : { color });
+    const dark = lam(null, 0x161514);
+    let m;
+    if (kind === 'guard' || kind === 'chen' || kind === 'self') {
+      m = { top: lam(TEX.clothing('uniform')), bottom: lam(null, 0x1e232c), shoes: lam(null, 0x0d0d0d), skin: lam(null, 0x8a7466), head: lam(TEX.face(kind === 'guard' ? 'guard' : kind)) };
+    } else if (kind === 'boss') {
+      m = { top: lam(TEX.clothing('suit')), bottom: lam(null, 0x232428), shoes: lam(null, 0x0d0d0d), skin: lam(null, 0x957b6a), head: o.paperFace ? lam(null, 0x957b6a) : lam(TEX.face('boss')) };
+    } else if (kind === 'woman') {
+      m = { top: lam(TEX.clothing('pajama')), bottom: lam(TEX.clothing('pajama')), shoes: lam(null, 0x9b8a80), skin: lam(null, 0x9b8a80), head: lam(TEX.face('woman')) };
+    } else if (kind === 'child') {
+      m = { top: lam(TEX.clothing('school')), bottom: lam(null, 0x24304e), shoes: lam(null, 0x1a1a1a), skin: lam(null, 0xa3897a), head: lam(TEX.face('child')) };
+    } else if (kind === 'tall') {
+      m = { top: dark, bottom: dark, shoes: dark, skin: lam(null, 0x221d1b), head: dark };
+    } else {
+      const tones = ['old-a', 'old-bb', 'old-ccc', 'old-dddd'];
+      const cloth = lam(TEX.clothing(tones[(o.variant || 0) % tones.length]));
+      m = { top: cloth, bottom: lam(null, 0x1f1d1c), shoes: lam(null, 0x111111), skin: lam(null, 0x4a403a), head: lam(TEX.face('blank')) };
+    }
+    M._fig[key] = m;
+    return m;
+  }
+
+  function limb(r0, r1, len, mat, seg = 7) {
+    const geo = new THREE.CylinderGeometry(r0, r1, len, seg);
+    geo.translate(0, -len / 2, 0);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    return mesh;
+  }
+
   function makeFigure(M, kind = 'adult', o = {}) {
+    const TEX = window.NP3D_TEX;
+    const P = PROFILE[kind] || PROFILE.adult;
+    const s = P.h / 1.72;
+    const mats = figureMats(M, kind, o);
     const g = new THREE.Group();
-    const scale = { adult: 1, child: 0.66, woman: 0.94, tall: 1.3, guard: 1, boss: 1.02, chen: 0.98 }[kind] || 1;
-    const bodyMat = kind === 'guard' || kind === 'chen' ? M.uniform : kind === 'boss' ? M.suit : M.body;
-    const limbMat = kind === 'guard' || kind === 'chen' ? M.uniform : kind === 'boss' ? M.suit : M.body;
-    const headMat = kind === 'tall' ? M.body : kind === 'guard' || kind === 'boss' || kind === 'chen' ? M.skin : M.body;
     const root = new THREE.Group();
     g.add(root);
-    const s = scale;
-    const legLen = 0.82 * s;
-    const torsoLen = 0.6 * s;
-    const armLen = (kind === 'tall' ? 0.95 : 0.66) * s;
-    const legGeo = new THREE.CylinderGeometry(0.065 * s, 0.055 * s, legLen, 6);
-    const legL = new THREE.Mesh(legGeo, limbMat);
-    const legR = new THREE.Mesh(legGeo, limbMat);
-    legL.position.set(-0.09 * s, legLen / 2, 0);
-    legR.position.set(0.09 * s, legLen / 2, 0);
-    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.17 * s, 0.14 * s, torsoLen, 8), bodyMat);
-    torso.position.y = legLen + torsoLen / 2;
-    const shoulderY = legLen + torsoLen - 0.04 * s;
-    const armGeo = new THREE.CylinderGeometry(0.045 * s, 0.035 * s, armLen, 6);
-    armGeo.translate(0, -armLen / 2, 0);
-    const armL = new THREE.Mesh(armGeo, limbMat);
-    const armR = new THREE.Mesh(armGeo, limbMat);
-    armL.position.set(-0.22 * s, shoulderY, 0);
-    armR.position.set(0.22 * s, shoulderY, 0);
-    armL.rotation.z = -0.06;
-    armR.rotation.z = 0.06;
-    const headPivot = new THREE.Group();
-    headPivot.position.y = legLen + torsoLen + 0.04 * s;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.115 * s, 8, 6), headMat);
-    head.position.y = 0.12 * s;
-    head.scale.y = kind === 'tall' ? 1.35 : 1.12;
-    headPivot.add(head);
-    if (kind === 'tall') {
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.2 * s, 0.26 * s), M.face);
-      face.position.set(0, 0.12 * s, 0.118 * s);
-      headPivot.add(face);
+
+    const tl = 0.43 * s * P.leg; // 大腿＝小腿長
+    const hipY = 0.06 * s + tl * 2;
+    const hips = new THREE.Group();
+    hips.position.y = hipY;
+    root.add(hips);
+    const pelvis = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * s * P.girth, 0.15 * s * P.girth, 0.14 * s, 9), mats.bottom);
+    pelvis.scale.z = 0.75;
+    pelvis.position.y = 0.02 * s;
+    hips.add(pelvis);
+
+    const legs = [-1, 1].map((side) => {
+      const thigh = new THREE.Group();
+      thigh.position.set(side * 0.09 * s * P.girth, 0, 0);
+      hips.add(thigh);
+      thigh.add(limb(0.075 * s, 0.058 * s, tl, mats.bottom));
+      const knee = new THREE.Group();
+      knee.position.y = -tl;
+      thigh.add(knee);
+      knee.add(limb(0.056 * s, 0.042 * s, tl, kind === 'woman' ? mats.bottom : mats.bottom));
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.085 * s, 0.06 * s, 0.22 * s), mats.shoes);
+      foot.position.set(0, -tl - 0.02 * s, 0.05 * s);
+      foot.castShadow = true;
+      knee.add(foot);
+      return { thigh, knee };
+    });
+
+    const spine = new THREE.Group();
+    spine.position.y = 0.06 * s;
+    hips.add(spine);
+    const tH = 0.56 * s * P.torso;
+    const prof = [[0.001, 0], [0.15, 0], [0.16, 0.08], [0.142, 0.24], [0.17, 0.4], [0.192, 0.5], [0.175, 0.6], [0.09, 0.66], [0.001, 0.68]]
+      .map(([r, y]) => new THREE.Vector2(r * s * P.girth, (y / 0.68) * tH));
+    const torso = new THREE.Mesh(new THREE.LatheGeometry(prof, 12), mats.top);
+    torso.scale.set(1.12, 1, 0.74);
+    torso.castShadow = true;
+    spine.add(torso);
+
+    const neck = new THREE.Group();
+    neck.position.y = tH * 0.97;
+    spine.add(neck);
+    const neckGeo = new THREE.CylinderGeometry(0.046 * s, 0.054 * s, 0.09 * s, 7);
+    neckGeo.translate(0, 0.045 * s, 0);
+    neck.add(new THREE.Mesh(neckGeo, mats.skin));
+    const head = new THREE.Group();
+    head.position.y = 0.08 * s;
+    neck.add(head);
+    const hr = 0.108 * s * P.head;
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(hr, 14, 10), mats.head);
+    skull.scale.set(0.9, kind === 'tall' ? 1.4 : 1.13, 0.98);
+    skull.position.y = hr * 0.95;
+    skull.castShadow = true;
+    head.add(skull);
+    const jaw = new THREE.Mesh(new THREE.SphereGeometry(hr * 0.72, 10, 6, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.55), mats.head);
+    jaw.position.set(0, hr * 0.62, hr * 0.12);
+    jaw.scale.set(0.95, 1.1, 0.95);
+    head.add(jaw);
+
+    if (kind === 'tall' || o.paperFace) {
+      const faceMesh = new THREE.Mesh(new THREE.PlaneGeometry(hr * 1.7, hr * 2.2), M.face);
+      faceMesh.position.set(0, hr * 1.0, hr * 0.97);
+      head.add(faceMesh);
     }
-    if (kind === 'guard' || kind === 'chen') {
-      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.13 * s, 0.08, 8), M.shirt);
-      collar.position.y = legLen + torsoLen - 0.02;
-      root.add(collar);
+    if (kind === 'guard') {
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(hr * 0.95, hr * 0.98, hr * 0.55, 12), mats.top);
+      cap.position.y = hr * 1.75;
+      const brim = new THREE.Mesh(new THREE.BoxGeometry(hr * 1.5, hr * 0.08, hr * 0.8), mats.shoes);
+      brim.position.set(0, hr * 1.5, hr * 0.85);
+      const badge = new THREE.Mesh(new THREE.BoxGeometry(hr * 0.35, hr * 0.3, 0.01), M.lamp);
+      badge.position.set(0, hr * 1.8, hr * 0.97);
+      head.add(cap, brim, badge);
+    }
+    if (kind === 'woman') {
+      const back = new THREE.Mesh(new THREE.BoxGeometry(hr * 1.9, hr * 4.2, hr * 0.5), M.hair);
+      back.position.set(0, hr * -0.1, -hr * 0.55);
+      head.add(back);
+      for (const side of [-1, 1]) {
+        const strand = new THREE.Mesh(new THREE.BoxGeometry(hr * 0.5, hr * 3.2, hr * 0.25), M.hair);
+        strand.position.set(side * hr * 0.55, hr * 0.2, hr * 0.78);
+        head.add(strand);
+      }
     }
     if (kind === 'child') {
-      const bag = new THREE.Mesh(new THREE.BoxGeometry(0.28 * s, 0.34 * s, 0.14 * s), M.red);
-      bag.position.set(0, legLen + torsoLen * 0.55, -0.16 * s);
-      root.add(bag);
+      const bag = new THREE.Mesh(new THREE.BoxGeometry(0.3 * s, 0.36 * s, 0.14 * s), M.red);
+      bag.position.set(0, tH * 0.55, -0.17 * s);
+      bag.castShadow = true;
+      spine.add(bag);
     }
-    root.add(legL, legR, torso, armL, armR, headPivot);
-    if (o.seated) {
-      legL.rotation.x = -Math.PI / 2;
-      legR.rotation.x = -Math.PI / 2;
-      legL.position.set(-0.09 * s, 0.45, legLen / 2 - 0.05);
-      legR.position.set(0.09 * s, 0.45, legLen / 2 - 0.05);
-      const dy = legLen - 0.45;
-      torso.position.y -= dy;
-      armL.position.y -= dy;
-      armR.position.y -= dy;
-      headPivot.position.y -= dy;
-      armL.rotation.x = -0.9;
-      armR.rotation.x = -0.9;
+    if (kind === 'boss') {
+      const tie = new THREE.Mesh(new THREE.BoxGeometry(0.03 * s, 0.22 * s, 0.01), M.red);
+      tie.position.set(0, tH * 0.72, 0.145 * s * P.girth);
+      spine.add(tie);
     }
-    if (o.floor) {
-      // 坐在地上（老陳）
-      root.position.y = -0.42;
-      legL.rotation.x = -Math.PI / 2;
-      legR.rotation.x = -Math.PI / 2;
-      legL.position.set(-0.09 * s, 0.45, legLen / 2);
-      legR.position.set(0.09 * s, 0.45, legLen / 2);
-      const dy = legLen - 0.45;
-      torso.position.y -= dy;
-      armL.position.y -= dy;
-      armR.position.y -= dy;
-      headPivot.position.y -= dy;
+    if (o.tag) {
+      const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.08 * s, 0.034 * s), new THREE.MeshLambertMaterial({ map: TEX.nameTag(o.tag) }));
+      tag.position.set(0.085 * s, tH * 0.74, 0.142 * s * P.girth);
+      spine.add(tag);
     }
+
+    const arms = [-1, 1].map((side) => {
+      const sh = new THREE.Group();
+      sh.position.set(side * 0.2 * s * P.girth, tH * 0.86, 0);
+      spine.add(sh);
+      const al = 0.3 * s * P.arm;
+      sh.add(limb(0.05 * s, 0.043 * s, al, mats.top));
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.055 * s, 7, 5), mats.top);
+      sh.add(ball);
+      const elbow = new THREE.Group();
+      elbow.position.y = -al;
+      sh.add(elbow);
+      elbow.add(limb(0.043 * s, 0.034 * s, al * 0.92, kind === 'child' ? mats.skin : mats.top));
+      const handGeo = new THREE.BoxGeometry(0.055 * s, 0.1 * s * P.hand, 0.028 * s);
+      handGeo.translate(0, -0.05 * s * P.hand, 0);
+      const hand = new THREE.Mesh(handGeo, mats.skin);
+      hand.position.y = -al * 0.92;
+      hand.castShadow = true;
+      elbow.add(hand);
+      sh.rotation.z = side * 0.06;
+      return { sh, elbow, hand };
+    });
+
+    const rig = { root, hips, spine, neck, head, legs, arms, hipY, tl, s };
+    const anim = { mode: o.anim || 'idle', track: false, phase: Math.random() * 10, speed: 0, look: { yaw: 0, pitch: 0 }, twitch: 0 };
+
+    function pose() {
+      rig.hips.position.y = hipY;
+      rig.spine.rotation.set(0, 0, 0);
+      legs.forEach((l) => {
+        l.thigh.rotation.set(0, 0, 0);
+        l.knee.rotation.set(0, 0, 0);
+      });
+      if (o.seated) {
+        rig.hips.position.y = 0.47;
+        legs.forEach((l) => {
+          l.thigh.rotation.x = -Math.PI / 2;
+          l.knee.rotation.x = Math.PI / 2;
+        });
+      } else if (o.floor) {
+        rig.hips.position.y = 0.1 * s;
+        legs.forEach((l, i) => {
+          l.thigh.rotation.x = -1.35;
+          l.thigh.rotation.y = (i ? 1 : -1) * 0.25;
+          l.knee.rotation.x = 0.55;
+        });
+        rig.spine.rotation.x = 0.18;
+      } else if (o.crouch) {
+        rig.hips.position.y = 0.32 * s;
+        legs.forEach((l) => {
+          l.thigh.rotation.x = -2.1;
+          l.knee.rotation.x = 2.3;
+        });
+        rig.spine.rotation.x = 0.45;
+      }
+      if (kind === 'tall') rig.spine.rotation.x = 0.28;
+    }
+    pose();
+
+    const tmp = new THREE.Vector3();
+    g.userData = {
+      kind, rig, anim, head, armL: arms[0].sh, armR: arms[1].sh, torso, root,
+      setAnim(mode, opts = {}) {
+        anim.mode = mode;
+        Object.assign(anim, opts);
+      },
+      update(dt, t, cam) {
+        const ph = t + anim.phase;
+        // 呼吸
+        torso.scale.y = 1 + Math.sin(ph * 1.7) * 0.012;
+        root.rotation.z = Math.sin(ph * 0.6) * 0.01;
+        const L = arms[0];
+        const R = arms[1];
+        const relax = () => {
+          for (const [i, a] of arms.entries()) {
+            a.sh.rotation.x += (0 - a.sh.rotation.x) * Math.min(1, dt * 4);
+            a.sh.rotation.z = (i ? 1 : -1) * 0.06 + Math.sin(ph * 1.7) * 0.01;
+            a.elbow.rotation.x += (-0.12 - a.elbow.rotation.x) * Math.min(1, dt * 4);
+          }
+        };
+        if (anim.mode !== 'walk' && !o.seated && !o.floor && !o.crouch) {
+          for (const l of legs) {
+            l.thigh.rotation.x *= Math.max(0, 1 - dt * 6);
+            l.knee.rotation.x *= Math.max(0, 1 - dt * 6);
+          }
+        }
+        switch (anim.mode) {
+          case 'write':
+            R.sh.rotation.x = -1.75 + Math.sin(ph * 3.1) * 0.08;
+            R.sh.rotation.z = 0.25;
+            R.elbow.rotation.x = -0.5 + Math.sin(ph * 6.3) * 0.18;
+            L.sh.rotation.x = -0.2;
+            break;
+          case 'beckon':
+            R.sh.rotation.x = -1.45;
+            R.elbow.rotation.x = -0.9 + Math.sin(ph * 5.5) * 0.65;
+            L.sh.rotation.x = 0;
+            break;
+          case 'hold':
+            L.sh.rotation.x = -1.25;
+            R.sh.rotation.x = -1.25;
+            L.elbow.rotation.x = -0.5;
+            R.elbow.rotation.x = -0.5;
+            break;
+          case 'swing':
+            relax();
+            if (o.seated) legs.forEach((l, i) => (l.knee.rotation.x = Math.PI / 2 + Math.sin(ph * 2.6 + i * Math.PI) * 0.35));
+            break;
+          case 'rock':
+            relax();
+            rig.spine.rotation.x = (o.crouch ? 0.45 : 0.2) + Math.sin(ph * 1.4) * 0.14;
+            break;
+          case 'twitch':
+            relax();
+            if (Math.random() < dt * 1.2) anim.twitch = (Math.random() - 0.5) * 1.4;
+            anim.twitch *= Math.pow(0.02, dt);
+            head.rotation.z = anim.twitch + 0.25;
+            arms.forEach((a, i) => (a.elbow.rotation.x = -0.1 + Math.sin(ph * 13 + i) * 0.05));
+            break;
+          case 'walk': {
+            const sp = Math.min(1.5, anim.speed);
+            anim.walkT = (anim.walkT || 0) + dt * (3 + sp * 3);
+            const w = Math.sin(anim.walkT) * 0.5 * Math.min(1, sp);
+            legs[0].thigh.rotation.x = w;
+            legs[1].thigh.rotation.x = -w;
+            legs[0].knee.rotation.x = Math.max(0, -Math.sin(anim.walkT)) * 0.7 * Math.min(1, sp);
+            legs[1].knee.rotation.x = Math.max(0, Math.sin(anim.walkT)) * 0.7 * Math.min(1, sp);
+            L.sh.rotation.x = -w * 0.7;
+            R.sh.rotation.x = w * 0.7;
+            break;
+          }
+          case 'lean':
+            relax();
+            rig.spine.rotation.x += (0.6 - rig.spine.rotation.x) * Math.min(1, dt * 2);
+            break;
+          default:
+            relax();
+        }
+        // 盯著鏡頭看
+        if (anim.track && cam) {
+          tmp.copy(cam);
+          g.worldToLocal(tmp);
+          const headY = hipY + tH + 0.2 * s;
+          const yaw = Math.max(-1.25, Math.min(1.25, Math.atan2(tmp.x, tmp.z)));
+          const pitch = Math.max(-0.6, Math.min(0.6, -Math.atan2(tmp.y - headY, Math.hypot(tmp.x, tmp.z))));
+          anim.look.yaw += (yaw - anim.look.yaw) * Math.min(1, dt * (anim.snap ? 30 : 2.5));
+          anim.look.pitch += (pitch - anim.look.pitch) * Math.min(1, dt * 2.5);
+          head.rotation.y = anim.look.yaw;
+          head.rotation.x = anim.look.pitch;
+        }
+      },
+    };
     g.traverse((m) => {
       if (m.isMesh) m.castShadow = true;
     });
-    g.userData = { kind, head: headPivot, armL, armR, torso, root };
     return g;
   }
 
@@ -908,18 +1142,20 @@ window.NP3D_WORLD = (() => {
     A.props.backs = new THREE.Group();
     A.group.add(A.props.crowd, A.props.backs);
     const spots = [[-0.6, 0.8], [0.5, 1.3], [-0.2, 2.4], [0.8, 3.1], [-0.9, 3.8], [0.2, 4.9], [-0.5, 6.2], [0.7, 7.0], [0, 8.6]];
-    spots.forEach(([x, z]) => {
-      const f = makeFigure(M, 'adult');
+    spots.forEach(([x, z], i) => {
+      const f = makeFigure(M, i % 3 === 1 ? 'woman' : 'adult', { variant: i });
+      f.userData.setAnim('idle', { track: true });
       f.position.set(x, 0, z);
       f.rotation.y = Math.PI;
       A.props.crowd.add(f);
     });
     for (let i = 0; i < 14; i++) {
-      const f = makeFigure(M, i % 4 === 0 ? 'woman' : 'adult');
+      const f = makeFigure(M, i % 4 === 0 ? 'woman' : 'adult', { variant: i });
       f.position.set(((i % 3) - 1) * 0.8 + (i % 2) * 0.2, 0, 0.6 + Math.floor(i / 3) * 1.1);
       A.props.backs.add(f);
     }
     A.props.guard = makeFigure(M, 'guard');
+    A.props.guard.userData.setAnim('beckon');
     A.props.guard.position.set(0, 0, 16.8);
     A.props.guard.rotation.y = Math.PI;
     A.group.add(A.props.guard);
@@ -976,7 +1212,8 @@ window.NP3D_WORLD = (() => {
       1.4, 0.35, 1.62, 2.05, -1.5, Math.PI / 2, { alpha: true },
     );
     A.props.stairText.visible = false;
-    A.props.chen = makeFigure(M, 'chen', { floor: true });
+    A.props.chen = makeFigure(M, 'chen', { floor: true, tag: '陳' });
+    A.props.chen.userData.setAnim('write');
     A.props.chen.position.set(0.15, 0, 30.9);
     A.group.add(A.props.chen);
     A.box(-1.0, -0.7, 0, 0.3, 30.6, 30.9, M.darkPlastic, { collide: false });
@@ -985,6 +1222,339 @@ window.NP3D_WORLD = (() => {
     A.zone('door7', -1.5, 1.6, -2.2, 0.2);
     A.anchor('chen', 0.15, 0.9, 30.6);
     A.anchor('door7', 1.5, 1.0, -1.5);
+  }
+
+  /* ================================================================ 環境敘事 */
+
+  /** 小道具工具組（本地座標） */
+  function kit(A) {
+    const M = A.M;
+    const TEX = window.NP3D_TEX;
+    const decalMat = (tex) => new THREE.MeshLambertMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    return {
+      fire(x, z, rotY) {
+        const g = new THREE.Group();
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.82, 0.16), M.red);
+        box.position.y = 1.1;
+        const lbl = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.16), new THREE.MeshLambertMaterial({ map: TEX.label(['消防栓'], { w: 96, h: 32, bg: '#a8241b', fg: '#fff3e0', size: 22 }) }));
+        lbl.position.set(0, 1.38, 0.081);
+        const ext = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.5, 8), M.red);
+        ext.position.set(0.48, 0.25, 0.02);
+        const nozzle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.06), M.darkPlastic);
+        nozzle.position.set(0.48, 0.53, 0.02);
+        g.add(box, lbl, ext, nozzle);
+        g.position.set(x, 0, z);
+        g.rotation.y = rotY;
+        A.group.add(g);
+      },
+      camera(pos, look) {
+        const g = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.1, 0.24), M.white);
+        const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.04, 8), M.darkPlastic);
+        lens.rotation.x = Math.PI / 2;
+        lens.position.z = -0.13;
+        const led = new THREE.Mesh(new THREE.SphereGeometry(0.012, 5, 4), M.led);
+        led.position.set(0.035, 0.035, -0.12);
+        g.add(body, lens, led);
+        g.position.copy(pos).sub(new THREE.Vector3(A.ox, 0, 0));
+        A.group.add(g);
+        g.lookAt(look);
+        g.rotateY(Math.PI);
+      },
+      board(tex, w, h, x, y, z, rotY) {
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, h + 0.08, 0.03), M.woodDark);
+        frame.position.set(x, y, z);
+        frame.rotation.y = rotY;
+        A.group.add(frame);
+        const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({ map: tex }));
+        p.position.set(x + Math.sin(rotY) * 0.02, y, z + Math.cos(rotY) * 0.02);
+        p.rotation.y = rotY;
+        A.group.add(p);
+        return p;
+      },
+      plant(x, z, h = 1.1) {
+        const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.36, 9), M.plain);
+        pot.position.set(x, 0.18, z);
+        A.group.add(pot);
+        const leaf = new THREE.MeshLambertMaterial({ color: 0x2c3a26 });
+        for (let i = 0; i < 6; i++) {
+          const l = new THREE.Mesh(new THREE.ConeGeometry(0.09, h * 0.7, 4), leaf);
+          l.position.set(x + Math.cos(i) * 0.08, 0.36 + h * 0.35, z + Math.sin(i * 1.7) * 0.08);
+          l.rotation.set(Math.cos(i * 2) * 0.4, i, Math.sin(i * 3) * 0.4);
+          A.group.add(l);
+        }
+        A.collide(x - 0.22, x + 0.22, z - 0.22, z + 0.22);
+      },
+      boxes(x, z, n, seed = 1) {
+        let r = seed;
+        const rand = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+        const mat = new THREE.MeshLambertMaterial({ map: TEX.label(['易碎', '福安搬家'], { w: 64, h: 64, bg: '#a0815a', fg: '#4a3420', size: 14 }) });
+        let y = 0;
+        for (let i = 0; i < n; i++) {
+          const w = 0.5 + rand() * 0.2;
+          const h = 0.38 + rand() * 0.12;
+          const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.45), mat);
+          b.position.set(x + (rand() - 0.5) * 0.1, y + h / 2, z + (rand() - 0.5) * 0.1);
+          b.rotation.y = (rand() - 0.5) * 0.4;
+          A.group.add(b);
+          y += h;
+        }
+        A.collide(x - 0.35, x + 0.35, z - 0.3, z + 0.3);
+      },
+      papers(x0, x1, z0, z1, n, seed = 3) {
+        let r = seed;
+        const rand = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+        const mat = new THREE.MeshLambertMaterial({ color: 0xd8d2c0, side: THREE.DoubleSide });
+        for (let i = 0; i < n; i++) {
+          const p = new THREE.Mesh(new THREE.PlaneGeometry(0.21, 0.29), mat);
+          p.rotation.set(-Math.PI / 2, 0, rand() * Math.PI);
+          p.position.set(x0 + rand() * (x1 - x0), 0.004 + i * 0.0004, z0 + rand() * (z1 - z0));
+          A.group.add(p);
+        }
+      },
+      puddle(x, z, rad = 0.6) {
+        const p = new THREE.Mesh(new THREE.CircleGeometry(rad, 14), M.puddle);
+        p.rotation.x = -Math.PI / 2;
+        p.scale.set(1, 0.6 + Math.random() * 0.4, 1);
+        p.position.set(x, 0.006, z);
+        A.group.add(p);
+      },
+      decal(tex, w, h, x, y, z, rotY = 0, rotX = 0) {
+        const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), decalMat(tex));
+        p.position.set(x, y, z);
+        p.rotation.set(rotX, rotY, 0, 'YXZ');
+        A.group.add(p);
+        return p;
+      },
+      clock(x, y, z, rotY, h, m) {
+        const c = new THREE.Mesh(new THREE.CircleGeometry(0.22, 18), new THREE.MeshLambertMaterial({ map: TEX.clockFace(h, m) }));
+        c.position.set(x, y, z);
+        c.rotation.y = rotY;
+        A.group.add(c);
+      },
+      plaque(floor, name, bg, fg) {
+        A.sign(TEX.plaque(floor, name, bg, fg), 1.5, 1.12, 0, 1.75, -2.885, 0);
+      },
+      wreath(x, z, rotY, words) {
+        const g = new THREE.Group();
+        for (const [lx, lz] of [[-0.3, -0.15], [0.3, -0.15], [0, 0.3]]) {
+          const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.3, 5), M.woodDark);
+          leg.position.set(lx, 0.65, lz);
+          leg.rotation.x = lz > 0 ? -0.2 : 0.1;
+          g.add(leg);
+        }
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.11, 6, 14), M.flowers);
+        ring.position.y = 1.55;
+        const inner = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.06, 5, 12), M.flowersY);
+        inner.position.set(0, 1.55, 0.03);
+        const center = new THREE.Mesh(new THREE.CircleGeometry(0.2, 12), new THREE.MeshLambertMaterial({ map: TEX.label(['奠'], { w: 64, h: 64, bg: '#efeadb', fg: '#111', size: 40 }) }));
+        center.position.set(0, 1.55, 0.04);
+        g.add(ring, inner, center);
+        for (const [i, side] of [[0, -1], [1, 1]]) {
+          const b = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.7), new THREE.MeshLambertMaterial({ map: TEX.wreathBanner(words[i]), side: THREE.DoubleSide }));
+          b.position.set(side * 0.5, 1.05, 0.06);
+          g.add(b);
+        }
+        g.position.set(x, 0, z);
+        g.rotation.y = rotY;
+        A.group.add(g);
+        return g;
+      },
+    };
+  }
+
+  const LIGHT_COLORS = { B1: 0xffb46e, '1F': 0xe8e2cf, '2F': 0xd0eef2, '3F': 0xf2dca4, '5F': 0xaec0e6, '6F': 0xc6dbb4, '4F': 0xd8cf9a };
+  const AMBIENTS = {
+    B1: { fog: 0x0b0806, density: 0.095, sky: 0x3a2c1e, ground: 0x080605, hemi: 0.4 },
+    '2F': { fog: 0x05090a, density: 0.1, sky: 0x2a4046, ground: 0x07090a, hemi: 0.42 },
+    '3F': { fog: 0x0a0805, density: 0.1, sky: 0x40382a, ground: 0x0a0806, hemi: 0.42 },
+    '5F': { fog: 0x05070c, density: 0.1, sky: 0x28344a, ground: 0x06070a, hemi: 0.4 },
+    '6F': { fog: 0x060806, density: 0.1, sky: 0x2c3a2a, ground: 0x070807, hemi: 0.4 },
+  };
+
+  function dress(A) {
+    const K = kit(A);
+    const TEX = window.NP3D_TEX;
+    const M = A.M;
+    const id = A.id;
+    for (const s of A.lightSpots) if (!s.guard && LIGHT_COLORS[id] && s.x <= A.ox + 1.6) s.color = LIGHT_COLORS[id];
+    if (AMBIENTS[id]) A.ambient = AMBIENTS[id];
+    const stains = [TEX.stain(1), TEX.stain(2), TEX.stain(3)];
+    const stainRun = (n, seed) => {
+      for (let i = 0; i < n; i++) {
+        const z = ((seed * 7 + i * 5.3) % 22) + 1;
+        const side = i % 3;
+        if (side === 0) K.decal(stains[i % 3], 1.2, 1.0, (i % 2 ? 0.5 : -0.4), 2.985, z, 0, Math.PI / 2);
+        else K.decal(stains[i % 3], 1.0, 1.4, side === 1 ? 1.385 : -1.385, 2.2, z, side === 1 ? -Math.PI / 2 : Math.PI / 2);
+      }
+    };
+
+    if (id === 'B1') {
+      K.plaque('B1', '停車場', '#1f1a14', '#e0a83c');
+      [[-2, 8, 0.9], [3.5, 18, 0.7], [-6, 15, 1.1], [1.2, 23, 0.6]].forEach(([x, z, r]) => K.puddle(x, z, r));
+      for (const c of A.props.cars) K.decal(stains[1], 1.6, 1.2, c.group.position.x - 0.5, 0.008, c.group.position.z, 0, -Math.PI / 2);
+      let n = 1;
+      for (const px of [-4.5, 4.5]) {
+        for (const pz of [7, 14, 21]) {
+          const face = px < 0 ? px + 0.31 : px - 0.31;
+          A.sign(TEX.label([`B1-${String.fromCharCode(64 + n)}`], { w: 64, h: 32, bg: '#d9b42c', fg: '#151515', size: 18 }), 0.4, 0.2, face, 2.0, pz, px < 0 ? Math.PI / 2 : -Math.PI / 2);
+          const band = new THREE.Mesh(new THREE.BoxGeometry(0.63, 0.35, 0.63), new THREE.MeshLambertMaterial({ map: TEX.hazard() }));
+          band.position.set(px, 0.175, pz);
+          A.group.add(band);
+          n++;
+        }
+      }
+      const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.8, 10), M.darkPlastic);
+      bin.position.set(-8.9, 0.4, 1.5);
+      A.group.add(bin);
+      K.fire(-9.9 + 0.09, 6, Math.PI / 2);
+    }
+
+    if (id === '1F') {
+      K.plaque('1F', '管理室・大廳', '#20262b', '#d8d2bf');
+      K.board(TEX.notices(), 1.5, 1.0, 4.88, 1.6, 21, -Math.PI / 2);
+      K.plant(4.35, 12.65);
+      K.plant(-4.35, 23.35);
+      A.box(-4.95, -4.5, 0, 0.45, 18.6, 20.8, M.wood);
+      A.box(-4.95, -4.85, 0.45, 0.95, 18.6, 20.8, M.wood, { collide: false });
+      A.box(-1.0, 1.0, 0.002, 0.008, 22.7, 23.7, M.rubber, { collide: false });
+      const ub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.55, 10), M.darkPlastic);
+      ub.position.set(4.3, 0.28, 23.3);
+      A.group.add(ub);
+      A.sign(TEX.photo('陳志明'), 0.42, 0.63, -3.6, 1.75, 11.085, Math.PI);
+      A.box(-4.6, -3.8, 1.3, 1.9, 2.7, 2.8, M.woodDark, { collide: false });
+      A.sign(TEX.label(['鑰匙'], { w: 64, h: 32, bg: '#3e2c1e', fg: '#e8e2d1', size: 18 }), 0.3, 0.15, -4.2, 2.0, 2.81, 0);
+      A.box(-5.25, -5.0, 0.8, 0.95, 4.65, 5.0, M.darkPlastic, { collide: false });
+      const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.1, 8), M.white);
+      mug.position.set(-4.9, 0.85, 5.55);
+      A.group.add(mug);
+      K.clock(-1.62, 2.4, 6.2, -Math.PI / 2, 3, 0);
+      K.fire(1.39, 6.5, -Math.PI / 2);
+    }
+
+    if (id === '2F') {
+      K.plaque('2F', '安心牙醫診所', '#dfeef0', '#2c5a63');
+      const t = A.plane(0.7, 0.3, new THREE.MeshBasicMaterial({ map: TEX.ticket() }), -2.6, 2.3, 2.12, 0);
+      A.props.ticket = t;
+      K.board(TEX.label(['每天刷牙三次', '定期檢查', '牙齒健康'], { w: 128, h: 160, bg: '#e8f0ef', fg: '#2c5a63', size: 18 }), 0.7, 0.9, -7.89, 1.6, 4.0, Math.PI / 2);
+      K.plant(-7.5, 2.6, 1.2);
+      A.box(-7.95, -7.6, 0, 1.0, 8.6, 9.6, M.woodDark);
+      K.fire(1.39, 15, -Math.PI / 2);
+      stainRun(6, 2);
+    }
+
+    if (id === '3F') {
+      K.plaque('3F', '明日之星補習班', '#f2e7c4', '#8a2b1d');
+      K.clock(9.38, 2.7, 9, -Math.PI / 2, 3, 0);
+      K.board(TEX.drawings(), 1.9, 0.95, 5.5, 1.6, 14.88, Math.PI);
+      K.fire(-1.39, 20, Math.PI / 2);
+      for (let i = 0; i < 5; i++) {
+        const bag = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.3), new THREE.MeshLambertMaterial({ color: [0x7a2a2a, 0x2a4a7a, 0x3a6a3a][i % 3] }));
+        bag.position.set(3.6 + (i % 3) * 1.5, 0.78, 5.4 + Math.floor(i / 2) * 2.2);
+        A.group.add(bag);
+      }
+      stainRun(5, 3);
+    }
+
+    if (id === '5F') {
+      K.plaque('5F', '招租中', '#2a3038', '#9aa6b6');
+      K.boxes(-7.6, 4.3, 3, 2);
+      K.boxes(-6.9, 4.4, 2, 5);
+      K.boxes(6.8, 5.0, 3, 9);
+      K.boxes(7.9, 21.0, 2, 4);
+      for (const [x, z] of [[-1, 18], [1.3, 16.8], [0.2, 9.5]]) {
+        const sheet = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.0, 0.62), M.cloth);
+        sheet.position.set(x, 0.5, z);
+        A.group.add(sheet);
+        A.collide(x - 0.32, x + 0.32, z - 0.32, z + 0.32);
+      }
+      K.papers(-6, 6, 5, 20, 22, 7);
+      K.puddle(7.4, 19.6, 0.5);
+      const ph = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.07, 0.16), M.darkPlastic);
+      ph.position.set(0.5, 0.035, 12);
+      ph.rotation.y = 0.6;
+      A.group.add(ph);
+      K.decal(TEX.banner('招租', '0912-XXX-XXX'), 1.4, 0.7, 8.87, 1.65, 9.5, -Math.PI / 2);
+      K.decal(TEX.banner('招租', '0912-XXX-XXX'), 1.4, 0.7, -8.87, 1.65, 16.5, Math.PI / 2);
+      K.fire(-1.39, 1.2, Math.PI / 2);
+    }
+
+    if (id === '6F') {
+      K.plaque('6F', '機房', '#d8c63a', '#1a1a1a');
+      const leaf = A.doors.roof.leaf;
+      [-0.25, 0, 0.25].forEach((dx, i) => {
+        const t = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.4), new THREE.MeshLambertMaterial({ map: TEX.talisman(i + 1), side: THREE.DoubleSide }));
+        t.position.set(dx, 0.35 + (i % 2) * 0.06, -0.045);
+        t.rotation.set(0, Math.PI, (i - 1) * 0.08);
+        leaf.add(t);
+      });
+      const floorHaz = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 1.2), new THREE.MeshLambertMaterial({ map: TEX.hazard() }));
+      floorHaz.rotation.x = -Math.PI / 2;
+      floorHaz.position.set(1.15, 0.006, 6.6);
+      A.group.add(floorHaz);
+      A.box(-1.5, -1.3, 1.0, 2.0, 3.6, 4.6, M.doorGrey, { collide: false });
+      A.sign(TEX.label(['高壓危險', '非相關人員', '請勿開啟'], { w: 96, h: 96, bg: '#d9b42c', fg: '#151515', size: 16 }), 0.4, 0.4, -1.29, 1.5, 4.1, Math.PI / 2);
+      K.puddle(0.4, 12, 0.7);
+      K.puddle(-0.6, 18.5, 0.5);
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 24, 8), M.iron);
+      pipe.rotation.x = Math.PI / 2;
+      pipe.position.set(1.15, 2.78, 12);
+      A.group.add(pipe);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), M.led);
+      lamp.position.set(0, 2.65, 23.85);
+      A.group.add(lamp);
+      const red = A.lightSpots.find((s) => Math.abs(s.z - 20) < 0.1);
+      if (red) Object.assign(red, { color: 0xff3a24, intensity: 0.75, flicker: 0.05, y: 2.4, z: 23.2, distance: 8 });
+      K.fire(1.39, 15, -Math.PI / 2);
+      // 第五條的走廊：一排會一盞一盞熄滅的燈
+      A.props.endlessTubes = [];
+      for (let i = 0; i < 9; i++) {
+        const m = new THREE.MeshBasicMaterial({ color: 0xeef3e6 });
+        const t = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 1.2), m);
+        t.position.set(0, 2.96, 27 + i * 4.5);
+        A.props.endless.add(t);
+        A.props.endlessTubes.push(m);
+      }
+      stainRun(6, 6);
+    }
+
+    if (id === '4F') {
+      K.plaque('4', '', '#151515', '#6a6a60');
+      A.props.wreaths = new THREE.Group();
+      A.group.add(A.props.wreaths);
+      const w1 = K.wreath(-0.9, 15.5, 0.25, ['音容宛在', '駕鶴西歸']);
+      const w2 = K.wreath(0.9, 15.5, -0.25, ['福安大廈', '全體敬輓']);
+      A.props.wreaths.add(w1, w2);
+      const burner = new THREE.Group();
+      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.12, 0.14, 10), M.iron);
+      bowl.position.y = 0.07;
+      burner.add(bowl);
+      for (let i = 0; i < 3; i++) {
+        const st = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.35, 4), M.red);
+        st.position.set((i - 1) * 0.04, 0.3, 0);
+        const tip = new THREE.Mesh(new THREE.SphereGeometry(0.012, 4, 3), M.led);
+        tip.position.set((i - 1) * 0.04, 0.48, 0);
+        burner.add(st, tip);
+      }
+      burner.position.set(-0.9, 0, 0.6);
+      A.group.add(burner);
+      A.props.burner = burner;
+    }
+
+    if (id === '7F') {
+      K.plaque('7F', '', '#2a1210', '#c0544a');
+      K.papers(-1.2, 1.2, 28.5, 31.6, 26, 11);
+      for (let i = 0; i < 5; i++) {
+        const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.14, 5), M.red);
+        pen.rotation.set(Math.PI / 2, 0, i * 1.3);
+        pen.position.set(-0.8 + i * 0.35, 0.01, 29.4 + (i % 2) * 0.6);
+        A.group.add(pen);
+      }
+      A.props.redPen = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.15, 6), M.red);
+      A.props.redPen.rotation.set(Math.PI / 2, 0, 0.4);
+      A.props.redPen.visible = false;
+      A.group.add(A.props.redPen);
+    }
   }
 
   /* ================================================================ 監視器 */
@@ -1017,9 +1587,23 @@ window.NP3D_WORLD = (() => {
     AREA_IDS.forEach((id, i) => {
       const A = newArea(id, i, M, labels);
       BUILDERS[id](A);
+      dress(A);
       areas[id] = A;
       scene.add(A.group);
     });
+    const figures = [];
+    for (const id of AREA_IDS) {
+      areas[id].group.traverse((o) => {
+        if (o.userData && o.userData.update && o.userData.rig) {
+          o.userData.area = id;
+          figures.push(o);
+        }
+      });
+    }
+    for (const f of [...FEEDS, FEED13]) {
+      const A = areas[f.area];
+      kit(A).camera(A.w(...f.pos), A.w(...f.look));
+    }
     const toWorld = (f) => ({
       area: f.area,
       pos: areas[f.area].w(...f.pos),
@@ -1029,7 +1613,12 @@ window.NP3D_WORLD = (() => {
       scene, areas, M,
       feeds: FEEDS.map(toWorld),
       feed13: toWorld(FEED13),
-      makeFigure: (kind, o) => makeFigure(M, kind, o),
+      figures,
+      makeFigure: (kind, o = {}) => {
+        const f = makeFigure(M, kind, o);
+        figures.push(f);
+        return f;
+      },
       SPACING,
     };
   }

@@ -666,10 +666,452 @@ window.NP3D_TEX = (() => {
     return label([{ text: '五點', size: 44, font: FONT_HAND, color: '#a3241b' }], { w: 128, h: 64, bg: '#efe9d8' });
   }
 
+  /* ---------------------------------------------------------------- 人物 */
+
+  const SKIN = { chen: '#8a7364', boss: '#957b6a', child: '#a3897a', woman: '#9b8a80', self: '#8c776a', guard: '#8a7466', blank: '#5b504a', dark: '#1d1a19' };
+  const faceCache = {};
+
+  /**
+   * 頭部貼圖（128×64，等距柱狀投影）：臉的中心在 u = 0.25，正對 +z。
+   * kind：chen | boss | child | woman | self | guard | blank | dark
+   */
+  function face(kind) {
+    if (faceCache[kind]) return faceCache[kind];
+    const [c, ctx] = canvas(128, 64);
+    const r = rng(kind.length * 97);
+    const skin = SKIN[kind] || SKIN.blank;
+    ctx.fillStyle = skin;
+    ctx.fillRect(0, 0, 128, 64);
+    // 側臉陰影與下巴
+    const sh = ctx.createLinearGradient(0, 0, 128, 0);
+    sh.addColorStop(0, 'rgba(0,0,0,0.25)');
+    sh.addColorStop(0.25, 'rgba(0,0,0,0)');
+    sh.addColorStop(0.5, 'rgba(0,0,0,0.3)');
+    sh.addColorStop(0.75, 'rgba(0,0,0,0.35)');
+    sh.addColorStop(1, 'rgba(0,0,0,0.25)');
+    ctx.fillStyle = sh;
+    ctx.fillRect(0, 0, 128, 64);
+    speckle(ctx, 128, 64, r, 260, ['rgba(0,0,0,0.08)', 'rgba(255,255,255,0.05)']);
+    const cx = 32;
+    const hair = (color, top, back, sides = 0) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, 128, top);
+      ctx.fillRect(56, 0, 72, back);
+      if (sides) {
+        ctx.fillRect(cx - 17, 0, 4, sides);
+        ctx.fillRect(cx + 13, 0, 4, sides);
+      }
+      speckle(ctx, 128, Math.max(top, back), r, 200, ['rgba(255,255,255,0.06)', 'rgba(0,0,0,0.2)']);
+    };
+    const eyes = (y, w, h, color = '#1a1412', gap = 7) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(cx - gap - w, y, w, h);
+      ctx.fillRect(cx + gap, y, w, h);
+    };
+    const brows = (y, color = '#2a221d') => {
+      ctx.fillStyle = color;
+      ctx.fillRect(cx - 13, y, 7, 1);
+      ctx.fillRect(cx + 6, y, 7, 1);
+    };
+    const mouth = (y, w, color = '#4a2e28') => {
+      ctx.fillStyle = color;
+      ctx.fillRect(cx - w / 2, y, w, 1);
+    };
+    const nose = (y) => {
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.fillRect(cx - 1, y, 2, 6);
+      ctx.fillRect(cx - 3, y + 5, 6, 1);
+    };
+    if (kind === 'chen') {
+      hair('#2b2a28', 15, 34, 22);
+      speckle(ctx, 128, 15, r, 60, ['#6d6a64']); // 白頭髮
+      brows(22);
+      eyes(26, 5, 2);
+      ctx.fillStyle = 'rgba(40,20,20,0.35)';
+      ctx.fillRect(cx - 13, 29, 6, 2); // 黑眼圈
+      ctx.fillRect(cx + 7, 29, 6, 2);
+      nose(27);
+      mouth(40, 9);
+      for (let i = 0; i < 90; i++) {
+        ctx.fillStyle = 'rgba(30,25,22,0.45)';
+        ctx.fillRect(cx - 12 + r() * 24, 36 + r() * 12, 1, 1); // 鬍渣
+      }
+    } else if (kind === 'boss') {
+      hair('#1d1c1b', 12, 30, 18);
+      ctx.fillStyle = skin;
+      ctx.fillRect(cx - 4, 4, 14, 8); // 髮線後退
+      brows(22, '#1b1715');
+      ctx.strokeStyle = '#161616';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx - 14, 24, 9, 6);
+      ctx.strokeRect(cx + 5, 24, 9, 6);
+      ctx.beginPath();
+      ctx.moveTo(cx - 5, 26);
+      ctx.lineTo(cx + 5, 26);
+      ctx.stroke();
+      eyes(26, 4, 2);
+      nose(28);
+      mouth(41, 11, '#3a2622');
+    } else if (kind === 'child') {
+      hair('#151313', 22, 40, 26);
+      ctx.fillStyle = skin;
+      ctx.fillRect(cx - 12, 18, 24, 6);
+      ctx.fillStyle = '#151313';
+      for (let i = 0; i < 6; i++) ctx.fillRect(cx - 12 + i * 4, 18, 3, 3 + (i % 2) * 2); // 瀏海
+      ctx.fillStyle = '#060505';
+      ctx.beginPath();
+      ctx.ellipse(cx - 7, 30, 3.5, 4.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + 7, 30, 3.5, 4.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      mouth(42, 4, '#3a2020');
+    } else if (kind === 'woman') {
+      hair('#0d0c0c', 26, 64, 64);
+      eyes(30, 4, 2, '#050404');
+      ctx.fillStyle = '#0d0c0c';
+      for (let i = 0; i < 9; i++) ctx.fillRect(cx - 14 + i * 3.4 + r() * 2, 0, 1 + Math.floor(r() * 2), 40 + r() * 24); // 蓋住臉的頭髮
+      mouth(44, 6, '#3d2222');
+    } else if (kind === 'self') {
+      hair('#1d1b1a', 14, 32, 20);
+      brows(22);
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(cx - 9, 27, 4, 3, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + 9, 27, 4, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      nose(28);
+      ctx.strokeStyle = '#3a2420';
+      ctx.beginPath();
+      ctx.moveTo(cx - 7, 40);
+      ctx.quadraticCurveTo(cx, 44, cx + 7, 40); // 微笑
+      ctx.stroke();
+    } else if (kind === 'guard') {
+      hair('#1f1e1c', 14, 32, 20);
+      brows(22);
+      ctx.fillStyle = '#1a1412';
+      ctx.fillRect(cx - 12, 27, 6, 1); // 閉著眼
+      ctx.fillRect(cx + 6, 27, 6, 1);
+      nose(28);
+      mouth(41, 8);
+    } else if (kind === 'dark') {
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(0, 0, 128, 64);
+    } else {
+      // 沒有五官
+      hair('#151413', 14, 34);
+      const g = ctx.createRadialGradient(cx, 30, 2, cx, 30, 16);
+      g.addColorStop(0, 'rgba(255,255,255,0.06)');
+      g.addColorStop(1, 'rgba(0,0,0,0.2)');
+      ctx.fillStyle = g;
+      ctx.fillRect(cx - 16, 14, 32, 34);
+    }
+    faceCache[kind] = toTex(c, { repeat: false });
+    return faceCache[kind];
+  }
+
+  const clothCache = {};
+  function clothing(kind) {
+    if (clothCache[kind]) return clothCache[kind];
+    const [c, ctx] = canvas(64, 64);
+    const r = rng(kind.length * 31);
+    if (kind === 'uniform') {
+      ctx.fillStyle = '#2b3546';
+      ctx.fillRect(0, 0, 64, 64);
+      speckle(ctx, 64, 64, r, 300, ['rgba(255,255,255,0.05)', 'rgba(0,0,0,0.12)']);
+      ctx.fillStyle = '#1f2734';
+      ctx.fillRect(0, 0, 2, 64);
+      ctx.fillRect(62, 0, 2, 64); // 門襟（u=0 正面）
+      ctx.fillStyle = '#c9c2a8';
+      for (let y = 10; y < 60; y += 10) {
+        ctx.fillRect(0, y, 2, 2);
+        ctx.fillRect(62, y, 2, 2);
+      }
+      ctx.strokeStyle = '#1b2230';
+      ctx.strokeRect(5, 22, 9, 8);
+      ctx.strokeRect(50, 22, 9, 8); // 口袋
+      ctx.fillStyle = '#a99a62';
+      ctx.fillRect(8, 16, 4, 3); // 臂章
+    } else if (kind === 'suit') {
+      ctx.fillStyle = '#26272b';
+      ctx.fillRect(0, 0, 64, 64);
+      speckle(ctx, 64, 64, r, 300, ['rgba(255,255,255,0.04)', 'rgba(0,0,0,0.12)']);
+      ctx.fillStyle = '#d9d6cc';
+      ctx.beginPath();
+      ctx.moveTo(0, 64);
+      ctx.lineTo(0, 30);
+      ctx.lineTo(7, 64);
+      ctx.moveTo(64, 64);
+      ctx.lineTo(64, 30);
+      ctx.lineTo(57, 64);
+      ctx.fill();
+      ctx.fillStyle = '#6b1d1a';
+      ctx.fillRect(0, 34, 2, 30);
+      ctx.fillRect(62, 34, 2, 30); // 領帶
+    } else if (kind === 'pajama') {
+      ctx.fillStyle = '#9fb3c4';
+      ctx.fillRect(0, 0, 64, 64);
+      for (let x = 0; x < 64; x += 6) {
+        ctx.fillStyle = '#7f95a8';
+        ctx.fillRect(x, 0, 2, 64);
+      }
+      blotch(ctx, 64, 64, r, 3, 'rgba(60,50,40,0.3)', 12);
+    } else if (kind === 'school') {
+      ctx.fillStyle = '#d8d6cf';
+      ctx.fillRect(0, 0, 64, 64);
+      ctx.fillStyle = '#9a9890';
+      for (let y = 10; y < 64; y += 12) {
+        ctx.fillRect(0, y, 2, 2);
+        ctx.fillRect(62, y, 2, 2);
+      }
+      ctx.fillStyle = '#2a3a6a';
+      ctx.fillRect(10, 18, 8, 3); // 學號繡線
+    } else {
+      // 其他人：褪色的舊衣服
+      const tones = ['#3c3a36', '#2f3438', '#40362f', '#33302e'];
+      ctx.fillStyle = tones[kind.length % tones.length];
+      ctx.fillRect(0, 0, 64, 64);
+      speckle(ctx, 64, 64, r, 400, ['rgba(255,255,255,0.05)', 'rgba(0,0,0,0.15)']);
+    }
+    clothCache[kind] = toTex(c);
+    return clothCache[kind];
+  }
+
+  /* ---------------------------------------------------------------- 場景細節 */
+
+  function stain(seed = 1) {
+    const [c, ctx] = canvas(64, 64);
+    const r = rng(seed);
+    for (let i = 0; i < 6; i++) {
+      const x = 20 + r() * 24;
+      const y = 20 + r() * 24;
+      const rad = 8 + r() * 18;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+      g.addColorStop(0, 'rgba(70,52,30,0.55)');
+      g.addColorStop(0.7, 'rgba(70,52,30,0.25)');
+      g.addColorStop(1, 'rgba(70,52,30,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 64, 64);
+    }
+    return toTex(c, { repeat: false, nearest: false });
+  }
+
+  function talisman(seed = 1) {
+    const [c, ctx] = canvas(32, 128);
+    const r = rng(seed);
+    ctx.fillStyle = '#d8b84a';
+    ctx.fillRect(0, 0, 32, 128);
+    blotch(ctx, 32, 128, r, 3, 'rgba(120,80,20,0.3)', 14);
+    ctx.fillStyle = '#9e1c14';
+    ctx.font = `bold 15px ${FONT_SERIF}`;
+    ctx.textAlign = 'center';
+    ['敕', '令', '鎮'].forEach((ch, i) => ctx.fillText(ch, 16, 20 + i * 18));
+    ctx.strokeStyle = '#9e1c14';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let y = 66;
+    ctx.moveTo(16, y);
+    while (y < 120) {
+      y += 6;
+      ctx.lineTo(8 + r() * 16, y);
+    }
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(16, 74, 6, 0, Math.PI * 2);
+    ctx.stroke();
+    return toTex(c, { repeat: false });
+  }
+
+  function clockFace(h = 3, m = 0) {
+    const [c, ctx] = canvas(64, 64);
+    ctx.fillStyle = '#1c1c1c';
+    ctx.beginPath();
+    ctx.arc(32, 32, 31, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ece6d4';
+    ctx.beginPath();
+    ctx.arc(32, 32, 27, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#222';
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      ctx.fillRect(32 + Math.sin(a) * 23 - 1, 32 - Math.cos(a) * 23 - 1, 2, 2);
+    }
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 3;
+    const ha = ((h % 12) / 12 + m / 720) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(32, 32);
+    ctx.lineTo(32 + Math.sin(ha) * 13, 32 - Math.cos(ha) * 13);
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    const ma = (m / 60) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(32, 32);
+    ctx.lineTo(32 + Math.sin(ma) * 20, 32 - Math.cos(ma) * 20);
+    ctx.stroke();
+    return toTex(c, { repeat: false });
+  }
+
+  function notices() {
+    const [c, ctx] = canvas(192, 128);
+    const r = rng(77);
+    ctx.fillStyle = '#7a5c3c';
+    ctx.fillRect(0, 0, 192, 128);
+    speckle(ctx, 192, 128, r, 800, ['#6b5034', '#8a6a48']);
+    const paper = (x, y, w, h, rot, lines, accent) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+      ctx.fillStyle = '#ece6d4';
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = accent || '#26221c';
+      ctx.font = `bold 11px ${FONT_SERIF}`;
+      ctx.fillText(lines[0], 6, 14);
+      ctx.fillStyle = '#3a342b';
+      ctx.font = `8px ${FONT_SERIF}`;
+      lines.slice(1).forEach((l, i) => ctx.fillText(l, 6, 28 + i * 11));
+      ctx.fillStyle = '#b3241d';
+      ctx.beginPath();
+      ctx.arc(w / 2, 3, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
+    paper(8, 8, 82, 62, -0.05, ['住戶公告', '本大樓夜間', '不開放出入', '管理室 啟'], '#8a1c16');
+    paper(100, 12, 82, 54, 0.06, ['失物招領', '保全制服一件', '名牌：陳', '請洽管理室']);
+    paper(30, 74, 96, 46, 0.03, ['電梯保養', '本週電梯', '不停 4 樓'], '#26221c');
+    paper(134, 72, 48, 50, -0.08, ['尋人', '…', '…']);
+    return toTex(c, { repeat: false });
+  }
+
+  function drawings() {
+    const [c, ctx] = canvas(192, 96);
+    ctx.fillStyle = '#6e5539';
+    ctx.fillRect(0, 0, 192, 96);
+    const pic = (x, y, rot, fn) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+      ctx.fillStyle = '#f4f0e4';
+      ctx.fillRect(0, 0, 54, 42);
+      fn();
+      ctx.restore();
+    };
+    pic(6, 8, -0.04, () => {
+      ctx.strokeStyle = '#2a4a8a';
+      for (let i = 0; i < 7; i++) ctx.strokeRect(18, 36 - i * 5, 16, 5);
+      ctx.fillStyle = '#c02a20';
+      ctx.fillRect(24, 3, 4, 3);
+    });
+    pic(68, 12, 0.05, () => {
+      ctx.fillStyle = '#111';
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.arc(8 + i * 10, 14, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(7 + i * 10, 17, 2, 14);
+      }
+      ctx.fillStyle = '#c02a20';
+      ctx.font = `9px ${FONT_HAND}`;
+      ctx.fillText('等電梯', 14, 40);
+    });
+    pic(130, 6, -0.02, () => {
+      ctx.fillStyle = '#2b3546';
+      ctx.fillRect(22, 12, 10, 20);
+      ctx.beginPath();
+      ctx.arc(27, 8, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#111';
+      ctx.font = `8px ${FONT_HAND}`;
+      ctx.fillText('七樓的叔叔', 6, 40);
+    });
+    return toTex(c, { repeat: false });
+  }
+
+  function photo(name) {
+    const [c, ctx] = canvas(64, 96);
+    ctx.fillStyle = '#3a2a1c';
+    ctx.fillRect(0, 0, 64, 96);
+    ctx.fillStyle = '#d9d2bf';
+    ctx.fillRect(5, 5, 54, 66);
+    ctx.fillStyle = '#7d8a90';
+    ctx.fillRect(8, 8, 48, 60);
+    ctx.fillStyle = '#2b3546';
+    ctx.fillRect(14, 46, 36, 22);
+    ctx.fillStyle = SKIN.chen;
+    ctx.beginPath();
+    ctx.ellipse(32, 34, 11, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2b2a28';
+    ctx.fillRect(21, 19, 22, 7);
+    ctx.fillStyle = '#1a1412';
+    ctx.fillRect(26, 33, 3, 1);
+    ctx.fillRect(35, 33, 3, 1);
+    ctx.fillRect(28, 41, 8, 1);
+    ctx.fillStyle = '#e9e1c8';
+    ctx.font = `9px ${FONT_SERIF}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('優良員工', 32, 82);
+    ctx.fillText(name, 32, 92);
+    return toTex(c, { repeat: false });
+  }
+
+  function plaque(floor, name, bg, fg) {
+    return label([{ text: floor, size: 84, font: FONT_MONO, weight: '500' }, { text: name, size: 22 }], { w: 256, h: 192, bg, fg, border: fg });
+  }
+
+  function hazard() {
+    const [c, ctx] = canvas(64, 16);
+    ctx.fillStyle = '#d9b42c';
+    ctx.fillRect(0, 0, 64, 16);
+    ctx.fillStyle = '#151515';
+    for (let x = -16; x < 64; x += 16) {
+      ctx.beginPath();
+      ctx.moveTo(x, 16);
+      ctx.lineTo(x + 8, 16);
+      ctx.lineTo(x + 16, 0);
+      ctx.lineTo(x + 8, 0);
+      ctx.fill();
+    }
+    return toTex(c);
+  }
+
+  function ticket() {
+    const [c, ctx] = canvas(96, 40);
+    ctx.fillStyle = '#0c0c0c';
+    ctx.fillRect(0, 0, 96, 40);
+    ctx.fillStyle = '#ff3a2a';
+    ctx.font = `bold 26px ${FONT_MONO}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('013', 60, 21);
+    ctx.font = `10px ${FONT_SANS}`;
+    ctx.fillText('叫號', 16, 21);
+    return toTex(c, { repeat: false });
+  }
+
+  function banner(text, sub) {
+    return label([{ text, size: 40, color: '#fff3e0' }, { text: sub, size: 14, color: '#ffd9c8', font: FONT_MONO }], { w: 192, h: 96, bg: '#a8241b' });
+  }
+
+  function wreathBanner(text) {
+    const [c, ctx] = canvas(24, 128);
+    ctx.fillStyle = '#efeadb';
+    ctx.fillRect(0, 0, 24, 128);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.font = `16px ${FONT_SERIF}`;
+    ctx.textAlign = 'center';
+    [...text].forEach((ch, i) => ctx.fillText(ch, 12, 22 + i * 24));
+    return toTex(c, { repeat: false });
+  }
+
+  function nameTag(name) {
+    return label([{ text: name, size: 30 }], { w: 96, h: 40, bg: '#e8e2d1', fg: '#1d2a4a', border: '#8a7a50' });
+  }
+
   return {
     FONT_SERIF, FONT_HAND, FONT_MONO, FONT_SANS,
     tile, wall, ceiling, concrete, carpet, metal, wood, cloth, shutter, city, sky, smoke,
     label, floorSign, exitSign, punchClock, handwriting, whiteboard, logbook, roster,
     tvNews, poster, directory, elevatorPanel, mailboxes, paperFace, chenSign,
+    face, clothing, stain, talisman, clockFace, notices, drawings, photo, plaque, hazard, ticket, banner, wreathBanner, nameTag,
   };
 })();

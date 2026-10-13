@@ -1339,3 +1339,29 @@ body.touch-mode .choice-help {
     opacity: 1;
   }
 }
+
+/* 電影模式：死亡場面與鏡頭演出時的上下黑邊 */
+.cine-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 0;
+  background: var(--pitch);
+  z-index: 19;
+  pointer-events: none;
+  transition: height 0.6s ease;
+}
+.cine-bar.top { top: 0; }
+.cine-bar.bottom { bottom: 0; }
+body.cine .cine-bar { height: 10vh; }
+body.cine .hud-tl,
+body.cine .hud-tr,
+body.cine .crosshair,
+body.cine .prompt,
+body.cine .touch {
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cine-bar { transition: none; }
+}

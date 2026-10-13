@@ -171,7 +171,8 @@
     renderer.setSize(w, h, false);
     const aspect = w / Math.max(1, h);
     camera.aspect = aspect;
-    camera.fov = aspect < 1 ? 82 : 72;
+    baseFov = aspect < 1 ? 82 : 72;
+    camera.fov = baseFov;
     camera.updateProjectionMatrix();
     const rw = Math.round(RENDER_H * aspect);
     rt.setSize(rw, RENDER_H);
@@ -430,7 +431,7 @@
   function updatePlayer(dt) {
     // 視角
     const sens = 0.0022 * settings.sens;
-    if (!P.lookLock) {
+    if (!P.lookLock && !P.cine) {
       P.yaw -= (input.mdx * sens + input.look.dx * 0.0055);
       P.pitch -= (input.mdy * sens + input.look.dy * 0.0055);
       P.pitch = clamp(P.pitch, -1.4, 1.35);
@@ -467,7 +468,7 @@
     let mx = 0;
     let mz = 0;
     let running = false;
-    if (!P.moveLock && !modal) {
+    if (!P.moveLock && !modal && !P.cine) {
       const k = input.keys;
       if (k.has('KeyW') || k.has('ArrowUp')) mz += 1;
       if (k.has('KeyS') || k.has('ArrowDown')) mz -= 1;
@@ -674,6 +675,15 @@
   function abortAll() {
     token += 1;
     P.rail = null;
+    tweens.length = 0;
+    cineDepth = 0;
+    document.body.classList.remove('cine');
+    P.cine = false;
+    fx.fear = null;
+    if (camera) {
+      camera.fov = baseFov;
+      camera.updateProjectionMatrix();
+    }
     tick(0, false);
     frameHooks.clear();
     loops.forEach((l) => l.stop());
@@ -948,7 +958,9 @@
 
   /* ================================================================ 視覺效果 */
 
-  const fx = { fade: 1, fadeTarget: 1, fadeSpeed: 2, flash: 0, hurt: 0, dawn: 0 };
+  const fx = { fade: 1, fadeTarget: 1, fadeSpeed: 2, flash: 0, hurt: 0, dawn: 0, fear: null };
+  const tweens = [];
+  let baseFov = 72;
 
   function fade(to, sec) {
     fx.fadeTarget = to;
@@ -958,6 +970,66 @@
 
   function flash(amount = 0.8) {
     fx.flash = Math.max(fx.flash, amount);
+  }
+
+  const ease = (k) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
+
+  function tween(sec, step) {
+    return new Promise((resolve) => {
+      let t = 0;
+      tweens.push((dt) => {
+        t += dt / Math.max(0.01, sec);
+        const k = Math.min(1, t);
+        step(ease(k), k);
+        if (k >= 1) {
+          resolve();
+          return true;
+        }
+        return false;
+      });
+    });
+  }
+
+  /** 把鏡頭轉向某個世界座標（電影式提示，也用在死亡場面） */
+  let lookSeq = 0;
+  function lookAt(pos, sec = 0.8) {
+    const id = ++lookSeq; // 新的鏡頭指令會取代還在進行中的舊指令
+    // 從玩家的眼睛算（不用 camera.position：同一幀剛瞬移時，相機還在舊位置）
+    const eye = V3(P.pos.x, P.pos.y + EYE + (P.sitting ? -0.45 : 0), P.pos.z);
+    const d = pos.clone().sub(eye);
+    const ty = Math.atan2(-d.x, -d.z);
+    const tp = Math.atan2(d.y, Math.hypot(d.x, d.z));
+    const y0 = P.yaw;
+    const p0 = P.pitch;
+    let dy = ty - y0;
+    while (dy > Math.PI) dy -= Math.PI * 2;
+    while (dy < -Math.PI) dy += Math.PI * 2;
+    return tween(sec, (k) => {
+      if (id !== lookSeq) return;
+      P.yaw = y0 + dy * k;
+      P.pitch = p0 + (tp - p0) * k;
+    });
+  }
+
+  function fovTo(v, sec = 0.5) {
+    const f0 = camera.fov;
+    const target = v == null ? baseFov : v;
+    return tween(sec, (k) => {
+      camera.fov = f0 + (target - f0) * k;
+      camera.updateProjectionMatrix();
+    });
+  }
+
+  let cineDepth = 0;
+  function cine(on) {
+    cineDepth = Math.max(0, cineDepth + (on ? 1 : -1));
+    const active = cineDepth > 0;
+    document.body.classList.toggle('cine', active);
+    P.cine = active;
+  }
+
+  function updateTweens(dt) {
+    for (let i = tweens.length - 1; i >= 0; i--) if (tweens[i](dt)) tweens.splice(i, 1);
   }
 
   function updateFx(dt) {
@@ -970,7 +1042,7 @@
     u.flash.value = fx.flash;
     u.hurt.value = fx.hurt * 0.6;
     u.dawn.value = fx.dawn;
-    u.fear.value = clamp(1 - S.san / 100, 0, 1);
+    u.fear.value = fx.fear != null ? fx.fear : clamp(1 - S.san / 100, 0, 1);
   }
 
   /* ================================================================ 數值 */
@@ -985,11 +1057,17 @@
     }
     AU.setTension(S.san);
     renderHud();
-    if (S.san <= 0 && mode === 'play') {
+    if (S.san <= 0 && mode === 'play' && !S.nf.sanDead) {
       const where = D.AREA_NAMES[S.area] || S.area;
-      endGame('E_SAN', `理智歸零（${NIGHT_NAMES[S.night]} ${clock()}・${where}）`);
+      const cause = `理智歸零（${NIGHT_NAMES[S.night]} ${clock()}・${where}）`;
+      S.nf.sanDead = true;
+      abortAll();
+      const hook = window.NP3D_DIRECTOR.onSanZero;
+      if (hook) runScript((g) => hook(g, cause));
+      else endGame('E_SAN', cause);
       throw new Abort();
     }
+    if (S.nf.sanDead) throw new Abort();
   }
 
   function updateStats(dt) {
@@ -1399,6 +1477,8 @@
     rig.aux.intensity = 0;
     P.sitting = false;
     P.pitch = 0;
+    P.moveLock = 0; // 上一夜可能停在死亡場面（鎖住移動）
+    P.lookLock = 0;
     interactables.splice(0, interactables.length);
     registerBase();
     window.NP3D_DIRECTOR.setupNight(G);
@@ -1776,6 +1856,9 @@
       updateDoors(dt);
     }
     tick(dt, worldPaused);
+    if (!worldPaused || mode === 'title') updateTweens(dt);
+    if (!worldPaused || mode === 'title') updateFigures(dt, elapsed);
+    world.M.led.color.setHex(Math.floor(elapsed * 1.3) % 2 ? 0xff2a1a : 0x2a0805);
     updateCamera(dt, elapsed);
     updateLights(dt, elapsed);
     updateFx(dt);
@@ -1792,6 +1875,22 @@
     renderer.setRenderTarget(null);
     renderer.render(post.scene, post.cam);
     requestAnimationFrame(frame);
+  }
+
+  function updateFigures(dt, t) {
+    const list = world.figures;
+    const inGuard = S.area === '1F';
+    for (let i = list.length - 1; i >= 0; i--) {
+      const f = list[i];
+      if (f.userData.dead) {
+        list.splice(i, 1);
+        continue;
+      }
+      if (!f.visible || !f.parent || !f.parent.visible) continue;
+      const a = f.userData.area;
+      if (a !== S.area && !(inGuard && a === '7F')) continue;
+      f.userData.update(dt, t, camera.position);
+    }
   }
 
   function shadowNeeded() {
@@ -1859,19 +1958,58 @@
     figure: (kind, areaId, x, z, yaw = 0, o = {}) => {
       const A = world.areas[areaId];
       const obj = world.makeFigure(kind, o);
+      obj.userData.area = areaId;
       obj.position.set(x, o.y || 0, z);
       obj.rotation.y = yaw;
+      if (o.anim || o.track) obj.userData.setAnim(o.anim || 'idle', { track: !!o.track });
       A.group.add(obj);
-      return {
+      const h = {
         obj,
         get world() { return V3(obj.position.x + A.ox, obj.position.y, obj.position.z); },
-        remove: () => A.group.remove(obj),
+        get headPos() { return V3(obj.position.x + A.ox, obj.position.y + (kind === 'child' ? 1.05 : kind === 'tall' ? 2.15 : 1.6) - (o.seated ? 0.45 : 0), obj.position.z); },
+        remove: () => {
+          obj.userData.dead = true;
+          A.group.remove(obj);
+        },
         setPos: (nx, nz) => obj.position.set(nx, obj.position.y, nz),
         face: (wx, wz) => {
           obj.rotation.y = Math.atan2(wx - (obj.position.x + A.ox), wz - obj.position.z);
         },
+        anim: (mode, opts) => obj.userData.setAnim(mode, opts),
+        track: (on, snap) => obj.userData.setAnim(obj.userData.anim.mode, { track: on, snap: !!snap }),
+        turn: (yaw, sec = 1) => {
+          const y0 = obj.rotation.y;
+          return tween(sec, (k) => (obj.rotation.y = y0 + (yaw - y0) * k));
+        },
+        walkTo: (wx, wz, speed = 1.1) => new Promise((resolve) => {
+          const prev = obj.userData.anim.mode;
+          obj.userData.setAnim('walk', { speed });
+          h.face(wx, wz);
+          tweens.push((dt) => {
+            const dx = wx - (obj.position.x + A.ox);
+            const dz = wz - obj.position.z;
+            const d = Math.hypot(dx, dz);
+            const step = speed * dt;
+            if (d <= step) {
+              obj.position.x = wx - A.ox;
+              obj.position.z = wz;
+              obj.userData.setAnim(prev === 'walk' ? 'idle' : prev, { speed: 0 });
+              resolve();
+              return true;
+            }
+            obj.position.x += (dx / d) * step;
+            obj.position.z += (dz / d) * step;
+            return false;
+          });
+        }),
       };
+      return h;
     },
+    lookAt,
+    fov: fovTo,
+    cine,
+    fear: (v) => (fx.fear = v),
+    tween,
     onFrame: (fn) => {
       frameHooks.add(fn);
       return () => frameHooks.delete(fn);
