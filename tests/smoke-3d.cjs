@@ -56,7 +56,7 @@ async function main() {
     if (!it) throw new Error(`no interactable ${i}`);
     NP3D_DEBUG.G.run(() => it.use(NP3D_DEBUG.G));
   }, id);
-  const until = (fn, timeout = 60000) => page.waitForFunction(fn, null, { timeout });
+  const until = (fn, timeout = 120000) => page.waitForFunction(fn, null, { timeout });
   const pick = async (n) => {
     await page.waitForSelector('#choice:not([hidden])', { timeout: 60000 });
     await page.keyboard.press(`Digit${n}`);

@@ -607,7 +607,11 @@ window.NP3D_DIRECTOR = (() => {
     }
   }
 
-  /** 不在保全室：它會在黑暗裡找你。開著手電筒，它就知道你在哪裡。 */
+  /**
+   * 不在保全室：它會在黑暗裡找你。
+   * 開著手電筒或在跑，它就聽得見、看得見你，大步追上來（約每秒 2.6 公尺，比走路快、比跑步慢）；
+   * 關燈慢慢走，它只能慢慢摸過來（約每秒 1.3 公尺）。躲進房間、關燈、不要跑，它只會停在門口。
+   */
   async function hunted(G) {
     const caught = { 1: -30, 2: -40, 3: -50 }[G.night];
     let areaId = null;
@@ -661,12 +665,13 @@ window.NP3D_DIRECTOR = (() => {
           if (d < 5) G.san(-1.1 * dt, { silent: true });
           stepT -= dt;
           if (stepT <= 0) {
-            stepT = 1.25;
+            stepT = 0.7;
             const Ar = A(G, areaId);
             let tx = G.pos.x;
             let tz = G.pos.z;
+            const exposed = G.flashOn || G.running;
             const room = Ar.rooms.find((r) => G.inZone(r.zone));
-            const hiding = room && !G.flashOn;
+            const hiding = room && !exposed;
             if (hiding) {
               tx = room.door.x;
               tz = room.door.z;
@@ -674,7 +679,7 @@ window.NP3D_DIRECTOR = (() => {
             const dx = tx - fp.x;
             const dz = tz - fp.z;
             const len = Math.hypot(dx, dz);
-            const step = Math.min(len, G.flashOn ? 2.1 : hiding ? 1.0 : 1.1);
+            const step = Math.min(len, exposed ? 1.8 : 0.9);
             if (len > 0.05) {
               f.setPos(fp.x - Ar.ox + (dx / len) * step, fp.z + (dz / len) * step);
               f.face(G.pos.x, G.pos.z);
@@ -1372,6 +1377,7 @@ window.NP3D_DIRECTOR = (() => {
     const nf = G.nf;
     nf.on7 = null;
     nf.timeFrozen = true; // 七樓沒有時間；走廊裡時鐘停在 05:xx
+    nf.noRun = true; // 低著頭照影子，跑不起來
     const chen = A7.props.chen;
     chen.userData.setAnim('write', { track: false });
     chen.userData.head.rotation.set(0, 0, 0);
@@ -1585,6 +1591,7 @@ window.NP3D_DIRECTOR = (() => {
     G.nf.flashScale = 1;
     G.nf.shaky = false;
     G.nf.timeFrozen = false;
+    G.nf.noRun = false;
     G.door('7F', 'stair7', false);
     const arr = A(G, '6F').stairs.fromAbove;
     G.teleport('6F', arr[0][0], arr[0][2], null, arr[0][1]);

@@ -74,7 +74,7 @@
     warnings: 0, missed: 0, marks: {}, area: '1F', nf: {}, signedIn: false, blackout: false,
   };
   const P = {
-    pos: V3(), yaw: 0, pitch: 0, bob: 0, stepAcc: 0, moveLock: 0, lookLock: 0,
+    pos: V3(), yaw: 0, pitch: 0, bob: 0, stepAcc: 0, moveLock: 0, lookLock: 0, running: false, winded: 0,
     rail: null, sitting: false, speed: 0, shake: 0, shakeT: 0, lookBackAllowed: true,
   };
   let mode = 'boot'; // boot | title | card | play | ending
@@ -414,7 +414,8 @@
 
   /* ================================================================ 玩家 */
 
-  const input = { keys: new Set(), mdx: 0, mdy: 0, joy: { x: 0, y: 0, active: false }, look: { dx: 0, dy: 0 }, interact: false };
+  const input = { keys: new Set(), mdx: 0, mdy: 0, joy: { x: 0, y: 0, active: false }, look: { dx: 0, dy: 0 }, interact: false, runHeld: false };
+  let windTipShown = false;
   let pointerLocked = false;
   let dragLook = false;
   let touchMode = false;
@@ -473,6 +474,7 @@
         P.rail = null;
         done();
       }
+      updateWind(dt, false);
       return;
     }
 
@@ -485,15 +487,17 @@
       if (k.has('KeyS') || k.has('ArrowDown')) mz -= 1;
       if (k.has('KeyA') || k.has('ArrowLeft')) mx -= 1;
       if (k.has('KeyD') || k.has('ArrowRight')) mx += 1;
-      running = k.has('ShiftLeft') || k.has('ShiftRight');
+      running = k.has('ShiftLeft') || k.has('ShiftRight') || input.runHeld;
       if (input.joy.active) {
         mx += input.joy.x;
         mz += -input.joy.y;
-        if (Math.hypot(input.joy.x, input.joy.y) > 0.92) running = true;
       }
     }
+    // 七樓走廊這類地方：低著頭照影子，跑不起來
+    if (S.nf.noRun) running = false;
     const len = Math.hypot(mx, mz);
     if (P.sitting && len > 0.1) standUp();
+    updateWind(dt, running && len > 0.1 && !P.sitting);
     if (P.sitting) {
       P.speed = 0;
       return;
@@ -524,6 +528,22 @@
         P.stepAcc = 0;
         AU.play('step', null, { mat: stepMat(), gain: running ? 1.4 : 1 });
       }
+    }
+  }
+
+  /**
+   * 跑步的代價：跑越久越喘（最多 5 秒），停下來才慢慢平復。
+   * 喘的時候四周有位置的聲音會被蓋過（audio.setWinded）。演出中不喘，免得蓋掉演出的聲音。
+   */
+  function updateWind(dt, running) {
+    P.running = running;
+    if (running) P.winded = Math.min(5, P.winded + dt);
+    else P.winded = Math.max(0, P.winded - dt * (S.nf.noRun ? 3 : 1));
+    const k = P.cine || P.moveLock ? 0 : clamp((P.winded - 0.6) / 2.4, 0, 1);
+    AU.setWinded(k);
+    if (!windTipShown && P.winded > 2.2 && mode === 'play') {
+      windTipShown = true;
+      toast('跑完會喘。喘的時候，聽不清楚四周的聲音。');
     }
   }
 
@@ -686,6 +706,9 @@
   function abortAll() {
     token += 1;
     P.rail = null;
+    P.running = false;
+    P.winded = 0;
+    AU.setWinded(0);
     tweens.length = 0;
     cineDepth = 0;
     document.body.classList.remove('cine');
@@ -1823,6 +1846,20 @@
       else useFocus();
     });
     $('touch-flash').addEventListener('click', () => setFlash(!S.flash));
+    // 「跑」：按住才跑（搖桿推到底不再自動跑，免得手機玩家一直誤跑）
+    const runBtn = $('touch-run');
+    const runOn = (e) => {
+      e.preventDefault();
+      input.runHeld = true;
+      runBtn.classList.add('on');
+    };
+    const runOff = () => {
+      input.runHeld = false;
+      runBtn.classList.remove('on');
+    };
+    runBtn.addEventListener('pointerdown', runOn);
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => runBtn.addEventListener(ev, runOff));
+    window.addEventListener('blur', runOff);
     $('touch-book').addEventListener('click', () => openBook());
     $('touch-menu').addEventListener('click', () => pause());
 
@@ -1989,6 +2026,8 @@
     },
     setFlash,
     get flashOn() { return S.flash && S.battery > 0; },
+    get running() { return P.running; },
+    get winded() { return P.winded; },
     sfx: (name, pos, o) => AU.play(name, pos || null, o),
     voice: (kind, sec, pos) => AU.voice(kind, sec, pos || null),
     loop: (name, pos, o) => {

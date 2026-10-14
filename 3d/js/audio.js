@@ -7,6 +7,10 @@ window.NP3D_AUDIO = (() => {
 
   let ctx = null;
   let master = null;
+  let worldBus = null;
+  let worldLp = null;
+  let winded = 0;
+  let pantTimer = null;
   let sfxBus = null;
   let ambBus = null;
   let muted = false;
@@ -31,6 +35,12 @@ window.NP3D_AUDIO = (() => {
     master.connect(comp).connect(ctx.destination);
     sfxBus = ctx.createGain();
     sfxBus.connect(master);
+    // 世界的聲音（有位置的）另走一條：喘氣時會被壓低、變悶，自己的聲音不受影響
+    worldLp = ctx.createBiquadFilter();
+    worldLp.type = 'lowpass';
+    worldLp.frequency.value = 20000;
+    worldBus = ctx.createGain();
+    worldBus.connect(worldLp).connect(sfxBus);
     ambBus = ctx.createGain();
     ambBus.gain.value = 0.9;
     ambBus.connect(master);
@@ -87,7 +97,7 @@ window.NP3D_AUDIO = (() => {
     p.maxDistance = 40;
     p.rolloffFactor = roll;
     setPannerPos(p, pos);
-    p.connect(sfxBus);
+    p.connect(worldBus);
     return { node: p, panner: p };
   }
 
@@ -562,13 +572,41 @@ window.NP3D_AUDIO = (() => {
     };
   }
 
+  /**
+   * 喘氣程度 0–1：跑完會喘，喘氣聲蓋過四周（有位置的聲音變小、變悶）。
+   * 自己的腳步與喘氣不受影響。
+   */
+  function setWinded(k) {
+    k = Math.max(0, Math.min(1, k || 0));
+    if (!ctx || Math.abs(k - winded) < 0.02) return;
+    winded = k;
+    const t = ctx.currentTime;
+    worldBus.gain.setTargetAtTime(1 - 0.72 * k, t, 0.15);
+    worldLp.frequency.setTargetAtTime(650 * Math.pow(20000 / 650, 1 - k), t, 0.15);
+    if (k > 0.1 && !pantTimer) pant();
+  }
+
+  function pant() {
+    if (winded <= 0.1) {
+      pantTimer = null;
+      return;
+    }
+    if (!muted) {
+      const t = ctx.currentTime;
+      const peak = 0.08 + winded * 0.16;
+      hit(t, sfxBus, { type: 'pink', filter: 'bandpass', freq: 1100, q: 1.2, peak, a: 0.05, d: 0.22 });
+      hit(t + 0.3, sfxBus, { type: 'pink', filter: 'bandpass', freq: 700, q: 1.0, peak: peak * 1.2, a: 0.04, d: 0.3 });
+    }
+    pantTimer = setTimeout(pant, 900 - winded * 380);
+  }
+
   function setMuted(v) {
     muted = v;
     if (master) master.gain.setTargetAtTime(muted ? 0 : 0.9, ctx.currentTime, 0.1);
   }
 
   return {
-    init, play, voice, loop, setListener, setAmbience, setTension, setMuted,
+    init, play, voice, loop, setListener, setAmbience, setTension, setMuted, setWinded,
     get muted() {
       return muted;
     },

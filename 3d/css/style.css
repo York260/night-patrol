@@ -1405,3 +1405,11 @@ body.cine .touch {
 .cp-list { display: inline-flex; gap: 6px; }
 .cp-floor { opacity: 0.35; }
 .cp-floor.done { opacity: 1; color: var(--beam); }
+
+/* 手機橫放：值班日誌縮緊，簽名鈕不被切掉 */
+@media (max-height: 480px) {
+  .sign-card { gap: 6px; padding: 14px 18px; }
+  .sign-table td { padding: 2px 6px; height: 1.5em; }
+  .sign-table tfoot td { padding-top: 4px; }
+  .sign-card input { font-size: var(--step-1); padding: 4px 8px; }
+}
