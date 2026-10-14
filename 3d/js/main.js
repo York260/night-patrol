@@ -19,13 +19,20 @@
 
   /* ================================================================ 常數 */
 
-  const SEC_PER_MIN = 1.2; // 現實 1.2 秒 = 遊戲 1 分鐘
+  // 時間節奏：巡邏時段走得慢，留時間打卡與探索；03:00 前後與 03:00–04:00 收緊
+  const PACE = [
+    [280, 2.2], // 22:30–02:40 巡邏：現實 2.2 秒 = 遊戲 1 分鐘
+    [300, 1.2], // 02:40–03:00 逼近第五條
+    [360, 1.2], // 03:00–04:00
+    [Infinity, 1.6], // 04:00–06:00
+  ];
+  const secPerMin = (t) => PACE.find(([until]) => t < until)[1];
   const TIME = { START: 30, LOCK: 300, UNLOCK: 360, DOOR7: 420, END: 480 };
   const EYE = 1.6;
   const RADIUS = 0.28;
   const WALK = 2.3;
   const RUN = 3.8;
-  const BAT_DRAIN = 100 / 230;
+  const BAT_DRAIN = 100 / 280;
   const RENDER_H = 270;
   const NIGHT_NAMES = { 1: '第一夜', 2: '第二夜', 3: '第三夜' };
   const KEYS = { save: 'np3d-save-v1', endings: 'np3d-endings-v1', settings: 'np3d-settings-v1' };
@@ -259,7 +266,7 @@
     A.props.monitor13Box.visible = false;
   }
 
-  const mon = { power: true, all13: false, show13: false, glitch: 0 };
+  const mon = { power: true, all13: false, show13: false, glitch: 0, cam13: null };
 
   function renderFeeds() {
     const inGuard = S.area === '1F' && inZone('guardRoom');
@@ -279,6 +286,10 @@
       const i = feed.idx;
       feed.idx = (feed.idx + 1) % 13;
       if (i === 12) {
+        // 第十三台攝影機：腳本可以把它移到別的地方（mon.cam13 = {pos, look}）
+        const at = mon.cam13 || world.feed13;
+        feed.cam13.position.copy(at.pos);
+        feed.cam13.lookAt(at.look);
         renderer.setRenderTarget(feed.rt13);
         renderer.render(scene, feed.cam13);
         continue;
@@ -1075,7 +1086,7 @@
     // 時間
     if (!S.nf.timeFrozen) {
       const scale = P.sitting ? 8 : 1;
-      S.time = Math.min(TIME.END, S.time + (dt / SEC_PER_MIN) * scale);
+      S.time = Math.min(TIME.END, S.time + (dt / secPerMin(S.time)) * scale);
     }
     // 電量
     if (S.flash && S.battery > 0) {
@@ -1116,7 +1127,19 @@
     const cells = $('hud-bat').children;
     for (let i = 0; i < cells.length; i++) cells[i].classList.toggle('on', S.battery > i * 20 + 1);
     $('hud-bat').classList.toggle('lit', S.flash && S.battery > 0);
-    $('hud-cp').textContent = `${S.cps.length} / 5`;
+    const cp = $('hud-cp');
+    if (cp.childElementCount !== D.CHECKPOINTS.length) {
+      cp.innerHTML = '';
+      for (const id of D.CHECKPOINTS) {
+        const el = document.createElement('span');
+        el.className = 'cp-floor';
+        el.dataset.floor = id;
+        el.textContent = id;
+        cp.append(el);
+      }
+    }
+    for (const el of cp.children) el.classList.toggle('done', S.cps.includes(el.dataset.floor));
+    cp.setAttribute('aria-label', `打卡進度 ${S.cps.length} / 5`);
     $('touch-flash').classList.toggle('on', S.flash);
   }
 
@@ -1303,13 +1326,31 @@
     });
   }
 
-  function nameInput() {
+  /**
+   * 值班日誌的簽到頁：列出前面的簽名，今天這一行由玩家簽。
+   * o.rows：[{date, in, out}]；o.editable：第一夜要填名字，之後只要按「簽名」。
+   */
+  function signSheet(o = {}) {
     return new Promise((resolve) => {
       releasePointer();
       $('sign').hidden = false;
+      const body = $('sign-rows');
+      body.innerHTML = '';
+      for (const r of o.rows || []) {
+        const tr = document.createElement('tr');
+        for (const v of [r.date, r.in, r.out]) {
+          const td = document.createElement('td');
+          td.textContent = v || '';
+          tr.append(td);
+        }
+        body.append(tr);
+      }
+      $('sign-today').textContent = o.date || '';
+      $('sign-label').textContent = o.editable === false ? '確認後在上班欄簽名' : '在上班欄簽下你的名字';
       const f = $('sign-name');
       f.value = S.name || '';
-      setTimeout(() => f.focus(), 30);
+      f.readOnly = o.editable === false;
+      setTimeout(() => (o.editable === false ? $('sign-go') : f).focus(), 30);
       modal = { kind: 'sign', key() {}, click() {} };
       $('sign-form').onsubmit = (e) => {
         e.preventDefault();
@@ -1320,6 +1361,10 @@
         resolve(v);
       };
     });
+  }
+
+  function nameInput() {
+    return signSheet({ editable: true });
   }
 
   /** 夜晚開場與結算的文字卡 */
@@ -1472,6 +1517,7 @@
     mon.all13 = false;
     mon.show13 = false;
     mon.glitch = 0;
+    mon.cam13 = null;
     fx.dawn = 0;
     shadowProxy.player.visible = false;
     rig.aux.intensity = 0;
@@ -1662,6 +1708,12 @@
     });
     document.addEventListener('pointerlockchange', () => {
       pointerLocked = document.pointerLockElement === canvas;
+      if (pointerLocked) lockGrace = performance.now() + 120;
+      // 鎖定比簽到頁晚一步生效時，要把滑鼠還給玩家，否則按不到「簽名」
+      if (pointerLocked && modal && modal.kind === 'sign') {
+        releasePointer();
+        return;
+      }
       document.body.classList.toggle('locked', pointerLocked);
       if (!pointerLocked && mode === 'play' && !modal && !expectUnlock) pause();
       expectUnlock = false;
@@ -1674,8 +1726,11 @@
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
+    let lockGrace = 0;
     document.addEventListener('mousemove', (e) => {
       if (pointerLocked) {
+        // 剛鎖定滑鼠的那一下，瀏覽器常會送來一筆很大的位移，丟掉它，免得視角突然甩開
+        if (performance.now() < lockGrace || Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;
         if (modal && modal.mouse) modal.mouse(e.movementY);
         else if (!modal) {
           input.mdx += e.movementX;
@@ -1922,7 +1977,7 @@
     endGame,
     endNight: () => endNight(),
     say, think, toast, objective, clock: () => clock(),
-    choice, note, nameInput,
+    choice, note, nameInput, signSheet,
     san: (d, o) => changeSan(d, o),
     battery: (d) => {
       S.battery = clamp(S.battery + d, 0, 100);

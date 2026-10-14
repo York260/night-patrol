@@ -3,7 +3,7 @@
  * 3D 版自動測試：用 Playwright（SwiftShader 軟體 WebGL）開啟 3d/index.html，
  * 透過 window.NP3D_DEBUG 跑過幾段關鍵流程，任何頁面錯誤都會讓測試失敗。
  *
- *   第一夜：簽到 → 搭電梯停 4 樓（不動）→ 抵達 2F 打卡 → 樓梯遇到 7F → 不回頭下樓
+ *   第一夜：開場簽到 → 搭電梯停 4 樓（不動）→ 抵達 2F 打卡 → 樓梯遇到 7F → 不回頭下樓
  *          → 03:00 鎖在保全室 → 開門 → 結局「敲門聲」
  *   第三夜：05:00 上七樓 → 照著影子走 → 「耳東陳」→ 不回頭帶老陳出來 → 06:00 推門 → 結局「交班」
  *
@@ -66,7 +66,7 @@ async function main() {
   if (!process.env.ONLY3) {
     await page.click('#btn-new');
     await page.click('#card-go');
-    await use('logbook');
+    // 開場直接攤開值班日誌，簽名（第一夜同時填名字）
     await page.waitForSelector('#sign:not([hidden])');
     await page.fill('#sign-name', '阿明');
     await page.press('#sign-name', 'Enter');
@@ -99,7 +99,7 @@ async function main() {
     await ev(() => NP3D_DEBUG.setTime(318));
     await use('guardDoor');
     await pick(1);
-    await page.waitForSelector('#ending:not([hidden])', { timeout: 30000 });
+    await page.waitForSelector('#ending:not([hidden])', { timeout: 90000 });
     assert.equal(await page.textContent('#end-title'), '敲門聲');
     console.log('✓ 03:00 開門 → 結局「敲門聲」');
   }
@@ -109,7 +109,9 @@ async function main() {
   });
   await page.waitForSelector('#card:not([hidden])');
   await page.click('#card-go');
-  await use('logbook');
+  await page.waitForSelector('#sign:not([hidden])');
+  assert.equal(await page.inputValue('#sign-name'), '阿明');
+  await page.click('#sign-go');
   await until(() => NP3D_DEBUG.S.signedIn);
   await ev(() => {
     NP3D_DEBUG.setTime(421);
@@ -155,7 +157,7 @@ async function main() {
   });
   await page.waitForTimeout(800);
   await use('exit');
-  await page.waitForSelector('#ending:not([hidden])', { timeout: 30000 });
+  await page.waitForSelector('#ending:not([hidden])', { timeout: 90000 });
   assert.equal(await page.textContent('#end-title'), '交班');
   console.log('✓ 06:00 推門離開 → 真結局「交班」');
 

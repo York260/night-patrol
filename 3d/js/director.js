@@ -136,7 +136,7 @@ window.NP3D_DIRECTOR = (() => {
     b.material.needsUpdate = true;
   }
 
-  function setLogbook(G, phase) {
+  function logRows(G, phase) {
     const S = G.S;
     const n = G.night;
     const name = S.name;
@@ -150,7 +150,26 @@ window.NP3D_DIRECTOR = (() => {
         rows.push({ date: dates[i - 1], in: signed ? name : '', out: phase === 'out' ? name : preOut, wet: !!preOut });
       }
     }
-    A(G, '1F').props.logbook.material = new THREE.MeshLambertMaterial({ map: G.TEX.logbook(rows) });
+    return rows;
+  }
+
+  function setLogbook(G, phase) {
+    A(G, '1F').props.logbook.material = new THREE.MeshLambertMaterial({ map: G.TEX.logbook(logRows(G, phase)) });
+  }
+
+  /** 開場簽到：值班日誌直接攤開在眼前，簽完才開始計時 */
+  async function signIn(G) {
+    const S = G.S;
+    const n = G.night;
+    const rows = logRows(G, 'start');
+    const today = rows.pop();
+    const name = await G.signSheet({ rows, date: today.date, editable: n === 1 });
+    if (n === 1) S.name = name;
+    G.sfx('page');
+    S.signedIn = true;
+    S.time = T.START;
+    setLogbook(G, 'in');
+    setRoster(G);
   }
 
   function setRoster(G) {
@@ -295,14 +314,14 @@ window.NP3D_DIRECTOR = (() => {
 
   async function startNight(G) {
     const touch = document.body.classList.contains('touch-mode');
+    if (!G.S.signedIn) await signIn(G);
     if (G.night === 1) {
       G.toast(touch ? '左下拖曳移動，右半邊拖曳看。按「互動」使用物品。' : 'WASD 移動・滑鼠看・E 互動・F 手電筒・H 守則');
+      await G.wait(2.5);
+      G.toast(touch ? '打卡點：B1・2F・3F・5F・6F。按「守則」翻開守則' : '打卡點：B1・2F・3F・5F・6F。按 H 翻開守則');
     } else {
       G.toast(G.night === 2 ? '守則的最後一頁，多了紅筆字。' : '守則第二頁，跟手機裡的照片不一樣。');
     }
-    await G.wait(1.0);
-    // 鏡頭帶到桌上的日誌（玩家已經走開就不搶鏡頭）
-    if (!G.S.signedIn && G.area === '1F' && G.inZone('guardRoom')) await G.lookAt(A(G, '1F').anchors.logbook, 1.2);
   }
 
   function logbookLabel(G) {
@@ -315,20 +334,7 @@ window.NP3D_DIRECTOR = (() => {
   async function onLogbook(G) {
     const S = G.S;
     const n = G.night;
-    if (!S.signedIn) {
-      G.sfx('page');
-      if (n === 1) S.name = await G.nameInput();
-      S.signedIn = true;
-      S.time = T.START;
-      setLogbook(G, 'in');
-      setRoster(G);
-      if (n === 1) {
-        G.toast(document.body.classList.contains('touch-mode') ? '打卡點：B1・2F・3F・5F・6F。按「守則」翻開守則' : '打卡點：B1・2F・3F・5F・6F。按 H 翻開守則');
-        // 監視器牆
-        if (G.area === '1F' && G.inZone('guardRoom')) await G.lookAt(W(G, '1F', -5.2, 1.65, 5.1), 1.0);
-      }
-      return;
-    }
+    if (!S.signedIn) return signIn(G);
     if (G.time < T.END) {
       G.toast('06:00 才能簽退。');
       return;
@@ -433,6 +439,7 @@ window.NP3D_DIRECTOR = (() => {
   }
 
   function onPunch(G, id) {
+    if (G.S.cps.length === 5 && G.time < T.LOCK) G.toast('五個打卡點都完成了。回保全室坐著，時間會過得比較快。');
     if (G.night === 1 && id === '6F' && paper6) {
       paper6.visible = true;
       G.run(async () => {
@@ -791,6 +798,7 @@ window.NP3D_DIRECTOR = (() => {
     const F1 = A(G, '1F');
     const bank = F1.w(-5.2, 1.65, 5.1);
     const target = n === 3 ? bank : F1.props.monitor13.getWorldPosition(new THREE.Vector3());
+    const inRoom = () => G.area === '1F' && G.inZone('guardRoom');
     mon.glitch = 1;
     G.sfx('static');
     await G.wait(0.25);
@@ -798,30 +806,54 @@ window.NP3D_DIRECTOR = (() => {
     if (n === 3) mon.all13 = true;
     else mon.show13 = true;
     // 鏡頭帶到第十三個畫面
-    if (G.area === '1F' && G.inZone('guardRoom')) await G.lookAt(target, 1.0);
+    if (inRoom()) await G.lookAt(target, 1.0);
     R.gaze = 0;
     R.powerResult = null;
+    R.stage13 = 0;
+    let inside = inRoom();
+    let ignored = 0;
+    let ev = null;
     while (true) {
-      const r = await G.waitUntil(() => {
-        if (R.powerResult) return true;
-        if (mon.power && G.area === '1F' && G.inZone('guardRoom') && G.dist(target) < 3.2 && G.looking(target, n === 3 ? 16 : 9)) R.gaze += 1 / 60;
+      ev = null;
+      await G.waitUntil(() => {
+        if (R.powerResult) return (ev = 'power');
+        const here = inRoom();
+        const lockTime = G.time >= T.LOCK && G.time < T.UNLOCK;
+        if (!here) {
+          inside = false;
+          R.gaze = Math.max(0, R.gaze - 1 / 120);
+          return false;
+        }
+        // 不理它：離開再回來，或一直待在房間裡不處理，它就更近一步
+        if (!inside) {
+          inside = true;
+          ignored = 0;
+          if (mon.power && !lockTime) return (ev = 'ignored');
+        }
+        if (mon.power && !lockTime) ignored += 1 / 60;
+        if (ignored > 45) {
+          ignored = 0;
+          return (ev = 'ignored');
+        }
+        if (mon.power && G.dist(target) < 3.2 && G.looking(target, n === 3 ? 16 : 9)) R.gaze += 1 / 60;
         else R.gaze = Math.max(0, R.gaze - 1 / 120);
-        return R.gaze > 2.6;
-      }, 400);
-      if (!r) return;
-      if (R.powerResult === 'ok') {
-        mon.show13 = false;
-        mon.all13 = false;
-        R.cctv = 'done';
-        return;
-      }
-      if (R.powerResult === 'early') {
+        if (R.gaze > 2.6) return (ev = 'stare');
+        return false;
+      });
+      if (ev === 'power') {
+        if (R.powerResult === 'ok') return clear13(G);
         R.powerResult = null;
         G.san(-5);
         mon.glitch = 0.35;
         G.sfx('static');
         await G.wait(0.4);
         mon.glitch = 0;
+        continue;
+      }
+      if (ev === 'ignored') {
+        R.stage13 += 1;
+        if (R.stage13 >= 3) return behindYou(G, target);
+        await closer13(G, target);
         continue;
       }
       // 盯著看太久：畫面拉近
@@ -851,13 +883,91 @@ window.NP3D_DIRECTOR = (() => {
         G.san(-12);
         await G.note('c4');
       }
-      mon.glitch = 0;
-      mon.show13 = false;
-      mon.all13 = false;
       chen.userData.head.rotation.y = n === 3 ? PI : 0;
-      R.cctv = 'done';
-      return;
+      return clear13(G);
     }
+  }
+
+  /** 第十三個畫面消失（關機十分鐘、看過了、或被它找到之後） */
+  function clear13(G) {
+    const mon = G.mon;
+    mon.glitch = 0;
+    mon.show13 = false;
+    mon.all13 = false;
+    mon.cam13 = null;
+    if (R.watcher13) R.watcher13.remove();
+    R.watcher13 = null;
+    R.cctv = 'done';
+  }
+
+  /** 不理第十三個畫面：畫面裡的東西，每次都離鏡頭更近一點 */
+  async function closer13(G, target) {
+    const mon = G.mon;
+    if (!R.watcher13) R.watcher13 = fig(G, 'tall', '7F', 0.2, 17, PI, { anim: 'twitch' });
+    const w = R.watcher13;
+    if (R.stage13 === 1) {
+      w.setPos(0.2, 17);
+      G.san(-5);
+    } else {
+      // 就站在鏡頭底下，抬頭看著你
+      w.setPos(0.5, 2.6);
+      w.anim('idle');
+      w.obj.userData.head.rotation.x = -0.75;
+      G.san(-8);
+    }
+    mon.glitch = 0.8;
+    G.sfx('static');
+    await G.wait(0.3);
+    mon.glitch = 0;
+    await G.lookAt(target, 0.8);
+    // 推近一下，讓玩家看清楚畫面裡的東西又近了
+    await G.fov(G.night === 3 ? 44 : 30, 0.6);
+    await G.wait(1.0);
+    await G.fov(null, 0.4);
+  }
+
+  /** 第三次不理它：第十三個畫面變成保全室，它就站在你背後 */
+  async function behindYou(G, target) {
+    const mon = G.mon;
+    const L = A(G, '1F');
+    if (R.watcher13) R.watcher13.remove();
+    R.watcher13 = null;
+    const fw = G.forward().setY(0).normalize();
+    const lx = Math.max(-5.0, Math.min(-1.9, G.pos.x - L.ox - fw.x * 0.85));
+    const lz = Math.max(3.0, Math.min(10.8, G.pos.z - fw.z * 0.85));
+    const it = fig(G, 'tall', '1F', lx, lz, 0, { anim: 'twitch' });
+    it.face(G.pos.x, G.pos.z);
+    // 攝影機掛在房間另一頭的天花板角落，近距離拍你背後
+    const cx = Math.max(-5.2, Math.min(-1.8, lx + (lx < -3.5 ? 1.5 : -1.5)));
+    const cz = Math.max(2.9, Math.min(10.9, lz + (lz < 7 ? 2.0 : -2.0)));
+    mon.cam13 = { pos: L.w(cx, 2.45, cz), look: L.w(lx, 1.45, lz) };
+    G.cine(true);
+    G.lock();
+    mon.glitch = 1;
+    G.sfx('static');
+    await G.wait(0.3);
+    mon.glitch = 0;
+    await G.lookAt(target, 0.6);
+    await G.fov(G.night === 3 ? 34 : 20, 0.9);
+    const breath = G.loop('breath', it.world.setY(2.0));
+    await G.wait(2.0);
+    G.fov(null, 0.2);
+    G.sfx('sting');
+    await G.lookAt(it.headPos, 0.35);
+    G.flash(1);
+    G.hurt(1);
+    G.sfx('scare');
+    G.shake(0.05, 0.6);
+    await G.wait(0.45);
+    await G.fade(1, 0.12);
+    breath.stop();
+    it.remove();
+    clear13(G);
+    await G.wait(0.6);
+    await G.fade(0, 0.5);
+    G.cine(false);
+    G.unlock();
+    G.san(-20);
   }
 
   /* ================================================================ 電話（第二夜） */
@@ -1256,6 +1366,7 @@ window.NP3D_DIRECTOR = (() => {
     const A7 = A(G, '7F');
     const nf = G.nf;
     nf.on7 = null;
+    nf.timeFrozen = true; // 七樓沒有時間；走廊裡時鐘停在 05:xx
     const chen = A7.props.chen;
     chen.userData.setAnim('write', { track: false });
     chen.userData.head.rotation.set(0, 0, 0);
@@ -1468,6 +1579,7 @@ window.NP3D_DIRECTOR = (() => {
     G.shadow(false);
     G.nf.flashScale = 1;
     G.nf.shaky = false;
+    G.nf.timeFrozen = false;
     G.door('7F', 'stair7', false);
     const arr = A(G, '6F').stairs.fromAbove;
     G.teleport('6F', arr[0][0], arr[0][2], null, arr[0][1]);
@@ -1883,5 +1995,6 @@ window.NP3D_DIRECTOR = (() => {
     setupNight, startNight, update, onEnterArea, onSanZero,
     logbookLabel, onLogbook, onExit, onPunch, onPower,
     elevatorStop, panelExtra, stairsTarget, onLanding,
+    get debug() { return R; },
   };
 })();

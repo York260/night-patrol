@@ -50,7 +50,7 @@
   <div class="hud-tr">
     <div id="hud-san" class="hud-san" data-level="ok"><span class="lbl">理智</span><span class="bar"><i id="hud-san-bar"></i></span></div>
     <div class="hud-row"><span class="lbl">手電筒</span><span id="hud-bat" class="hud-bat"><i></i><i></i><i></i><i></i><i></i></span></div>
-    <div class="hud-row"><span class="lbl">打卡</span><span id="hud-cp" class="num">0 / 5</span></div>
+    <div class="hud-row"><span class="lbl">打卡</span><span id="hud-cp" class="num cp-list" aria-label="打卡進度"></span></div>
   </div>
   <div class="crosshair" aria-hidden="true"></div>
   <p id="prompt" class="prompt" hidden><span id="prompt-key" class="key">E</span><span id="prompt-text"></span></p>
@@ -89,10 +89,13 @@
 
 <section id="sign" class="overlay" hidden>
   <form id="sign-form" class="sign-card" autocomplete="off">
-    <p class="sign-head">值班日誌・上班</p>
-    <label for="sign-name">在上班欄簽下你的名字</label>
-    <input id="sign-name" name="sign-name" maxlength="8" placeholder="你的名字">
-    <button type="submit" class="btn primary">簽名</button>
+    <p class="sign-head">福安大廈・值班日誌</p>
+    <table class="sign-table">
+      <thead><tr><th scope="col">日期</th><th scope="col">上班</th><th scope="col">下班</th></tr></thead>
+      <tbody id="sign-rows"></tbody>
+      <tfoot><tr><td id="sign-today"></td><td colspan="2"><label id="sign-label" for="sign-name">在上班欄簽下你的名字</label><input id="sign-name" name="sign-name" maxlength="8" placeholder="你的名字"></td></tr></tfoot>
+    </table>
+    <button type="submit" id="sign-go" class="btn primary">簽名，開始值班</button>
   </form>
 </section>
 

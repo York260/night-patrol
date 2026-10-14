@@ -691,7 +691,7 @@ body.touch-mode .choice-help {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: min(100%, 24rem);
+  width: min(100%, 26rem);
   padding: 22px;
   background: var(--paper);
   color: var(--ink);
@@ -1365,3 +1365,43 @@ body.cine .touch {
 @media (prefers-reduced-motion: reduce) {
   .cine-bar { transition: none; }
 }
+
+/* 值班日誌：前面幾天的簽名，最後一行由玩家簽 */
+.sign-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-hand);
+  font-size: var(--step-0);
+}
+.sign-table th {
+  font-family: var(--font-ui);
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-soft);
+  text-align: left;
+  padding: 2px 6px 6px;
+  border-bottom: 1px solid var(--ink-soft);
+}
+.sign-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  height: 1.9em;
+  vertical-align: bottom;
+}
+.sign-table td:first-child {
+  width: 4.2em;
+  font-family: var(--font-mono);
+  font-size: var(--step--1);
+}
+.sign-table tfoot td { border-bottom: 0; padding-top: 10px; }
+.sign-table tfoot label {
+  display: block;
+  margin-bottom: 2px;
+}
+.sign-table input { width: 100%; box-sizing: border-box; }
+.sign-table input[readonly] { pointer-events: none; }
+
+/* HUD 打卡清單：打過的樓層亮起來 */
+.cp-list { display: inline-flex; gap: 6px; }
+.cp-floor { opacity: 0.35; }
+.cp-floor.done { opacity: 1; color: var(--beam); }
