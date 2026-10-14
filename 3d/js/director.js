@@ -810,7 +810,11 @@ window.NP3D_DIRECTOR = (() => {
     R.gaze = 0;
     R.powerResult = null;
     R.stage13 = 0;
-    let inside = inRoom();
+    // 離開保全室這件事，即使發生在演出途中也要記得
+    R.left13 = false;
+    R.offWatch13 = G.onFrame(() => {
+      if (!inRoom()) R.left13 = true;
+    });
     let ignored = 0;
     let ev = null;
     while (true) {
@@ -820,13 +824,12 @@ window.NP3D_DIRECTOR = (() => {
         const here = inRoom();
         const lockTime = G.time >= T.LOCK && G.time < T.UNLOCK;
         if (!here) {
-          inside = false;
           R.gaze = Math.max(0, R.gaze - 1 / 120);
           return false;
         }
         // 不理它：離開再回來，或一直待在房間裡不處理，它就更近一步
-        if (!inside) {
-          inside = true;
+        if (R.left13) {
+          R.left13 = false;
           ignored = 0;
           if (mon.power && !lockTime) return (ev = 'ignored');
         }
@@ -897,6 +900,8 @@ window.NP3D_DIRECTOR = (() => {
     mon.cam13 = null;
     if (R.watcher13) R.watcher13.remove();
     R.watcher13 = null;
+    if (R.offWatch13) R.offWatch13();
+    R.offWatch13 = null;
     R.cctv = 'done';
   }
 
