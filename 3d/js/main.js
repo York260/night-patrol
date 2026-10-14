@@ -35,7 +35,7 @@
   const BAT_DRAIN = 100 / 280;
   const RENDER_H = 270;
   const NIGHT_NAMES = { 1: '第一夜', 2: '第二夜', 3: '第三夜' };
-  const KEYS = { save: 'np3d-save-v1', endings: 'np3d-endings-v1', settings: 'np3d-settings-v1' };
+  const KEYS = { save: 'np3d-save-v1', endings: 'np3d-endings-v1', settings: 'np3d-settings-v1', hints: 'np3d-hints-v1' };
   const FLOORS = D.FLOORS;
   const MARKS = ['', 'trust', 'doubt'];
   const MARK_GLYPH = { '': '○', trust: '✓', doubt: '✗' };
@@ -65,7 +65,7 @@
     },
   };
 
-  const settings = Object.assign({ sens: 1, muted: false }, store.get(KEYS.settings, {}));
+  const settings = Object.assign({ sens: 1, muted: false, hints: true }, store.get(KEYS.settings, {}));
 
   /* ================================================================ 狀態 */
 
@@ -415,7 +415,6 @@
   /* ================================================================ 玩家 */
 
   const input = { keys: new Set(), mdx: 0, mdy: 0, joy: { x: 0, y: 0, active: false }, look: { dx: 0, dy: 0 }, interact: false, runHeld: false };
-  let windTipShown = false;
   let pointerLocked = false;
   let dragLook = false;
   let touchMode = false;
@@ -541,10 +540,72 @@
     else P.winded = Math.max(0, P.winded - dt * (S.nf.noRun ? 3 : 1));
     const k = P.cine || P.moveLock ? 0 : clamp((P.winded - 0.6) / 2.4, 0, 1);
     AU.setWinded(k);
-    if (!windTipShown && P.winded > 2.2 && mode === 'play') {
-      windTipShown = true;
-      toast('跑完會喘。喘的時候，聽不清楚四周的聲音。');
+  }
+
+  /* ================================================================ 操作提示：只在需要的那一刻出現 */
+
+  // 看過的提示記在這份存檔；開新遊戲才會重新出現，重來這一夜不會
+  const hints = { seen: new Set(store.get(KEYS.hints, [])), cur: null, walk: 0 };
+
+  function hintText(id) {
+    if (id === 'flash') return touchMode ? ['', '按「手電筒」打開手電筒'] : ['F', '打開手電筒'];
+    if (id === 'battery') return ['', '保全室門邊的櫃子可以換電池'];
+    if (id === 'run') return touchMode ? ['', '按住「跑」跑步'] : ['Shift', '按住跑步'];
+    return ['', '喘的時候，聽不清楚四周的聲音'];
+  }
+
+  function showHint(id, maxSec, done) {
+    const [key, text] = hintText(id);
+    $('hint-key').hidden = !key;
+    $('hint-key').textContent = key;
+    $('hint-text').textContent = text;
+    const el = $('hint');
+    el.hidden = false;
+    el.classList.remove('out');
+    hints.cur = { id, t: 0, maxSec, done };
+  }
+
+  function hideHint(now = false) {
+    const el = $('hint');
+    hints.cur = null;
+    if (now) {
+      el.hidden = true;
+      return;
     }
+    el.classList.add('out');
+    setTimeout(() => {
+      if (!hints.cur) el.hidden = true;
+    }, 500);
+  }
+
+  function updateHints(dt) {
+    const lockTime = S.time >= TIME.LOCK && S.time < TIME.UNLOCK;
+    const quiet = !settings.hints || mode !== 'play' || !!modal || P.cine || P.moveLock > 0 || P.rail || !S.signedIn || lockTime;
+    const cur = hints.cur;
+    if (cur) {
+      // 被演出打斷就先收起來，不算看過，之後還會再出現
+      if (quiet) return hideHint(true);
+      cur.t += dt;
+      if (cur.done() || cur.t > cur.maxSec) {
+        hints.seen.add(cur.id);
+        store.set(KEYS.hints, [...hints.seen]);
+        hideHint();
+      }
+      return;
+    }
+    if (quiet) {
+      hints.walk = 0;
+      return;
+    }
+    const want = (id) => !hints.seen.has(id);
+    const night1 = S.night === 1;
+    const inGuard = S.area === '1F' && inZone('guardRoom');
+    if (night1 && want('flash') && !S.flash && S.area !== '1F' && (S.area === 'B1' || !lightsOn())) return showHint('flash', 12, () => S.flash);
+    if (night1 && want('battery') && S.battery <= 30) return showHint('battery', 8, () => S.battery > 90);
+    if (P.speed > 0.5 && !P.running && !inGuard) hints.walk += P.speed * dt;
+    else if (P.speed < 0.1 || P.running) hints.walk = 0;
+    if (night1 && want('run') && hints.walk > 6) return showHint('run', 8, () => P.running);
+    if (want('winded') && P.winded > 2.2) return showHint('winded', 3.5, () => false);
   }
 
   function stepMat() {
@@ -709,6 +770,7 @@
     P.running = false;
     P.winded = 0;
     AU.setWinded(0);
+    if ($('hint')) hideHint(true);
     tweens.length = 0;
     cineDepth = 0;
     document.body.classList.remove('cine');
@@ -1866,6 +1928,8 @@
     // 介面按鈕
     $('btn-new').addEventListener('click', () => {
       AU.init();
+      hints.seen.clear();
+      store.del(KEYS.hints);
       startNight(freshState());
     });
     $('btn-continue').addEventListener('click', () => {
@@ -1886,6 +1950,13 @@
     });
     $('pause-help').addEventListener('click', showHelp);
     $('pause-sound').addEventListener('click', toggleSound);
+    const hintLabel = () => ($('pause-hints').textContent = settings.hints ? '操作提示：開' : '操作提示：關');
+    hintLabel();
+    $('pause-hints').addEventListener('click', () => {
+      settings.hints = !settings.hints;
+      store.set(KEYS.settings, settings);
+      hintLabel();
+    });
     $('pause-title').addEventListener('click', showTitle);
     $('sens').addEventListener('input', (e) => {
       settings.sens = Number(e.target.value);
@@ -1936,6 +2007,7 @@
     if (mode === 'play' && !modal) {
       updatePlayer(dt);
       updateStats(dt);
+      updateHints(dt);
       updateDoors(dt);
       try {
         window.NP3D_DIRECTOR.update(G, dt);

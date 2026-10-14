@@ -316,9 +316,10 @@ window.NP3D_DIRECTOR = (() => {
     const touch = document.body.classList.contains('touch-mode');
     if (!G.S.signedIn) await signIn(G);
     if (G.night === 1) {
-      G.toast(touch ? '左下拖曳移動，右半邊拖曳看。按「互動」使用物品。' : 'WASD 移動・滑鼠看・E 互動・F 手電筒・H 守則');
+      // 開場只教最基本的；手電筒、跑步、換電池等到需要的時候才提示（main.js 的操作提示）
+      G.toast(touch ? '左下拖曳移動，右半邊拖曳看，按「互動」使用物品' : 'WASD 移動・滑鼠看・E 互動');
       await G.wait(2.5);
-      G.toast(touch ? '打卡點：B1・2F・3F・5F・6F。按「守則」翻開守則' : '打卡點：B1・2F・3F・5F・6F。按 H 翻開守則');
+      G.toast(touch ? '按「守則」翻開守則。打卡點列在右上角' : '按 H 翻開守則。打卡點列在右上角');
     } else {
       G.toast(G.night === 2 ? '守則的最後一頁，多了紅筆字。' : '守則第二頁，跟手機裡的照片不一樣。');
     }

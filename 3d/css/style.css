@@ -1413,3 +1413,26 @@ body.cine .touch {
   .sign-table tfoot td { padding-top: 4px; }
   .sign-card input { font-size: var(--step-1); padding: 4px 8px; }
 }
+
+/* 操作提示：在需要的那一刻出現在準心下方，做到了就淡出 */
+.hint {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 68px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 5px 12px;
+  background: var(--shade-soft);
+  border: 1px solid var(--line);
+  color: var(--paper);
+  font-size: var(--step--1);
+  white-space: nowrap;
+  opacity: 0.9;
+  transition: opacity 0.5s ease;
+}
+.hint.out { opacity: 0; }
+.hint .key[hidden] { display: none; }
+body.cine .hint { opacity: 0; }
