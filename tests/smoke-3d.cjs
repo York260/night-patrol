@@ -49,6 +49,8 @@ async function main() {
   });
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#title:not([hidden])', { timeout: 60000 });
+  // 軟體 WebGL 很慢：每畫一幀模擬多步，遊戲邏輯照常但不必等渲染（NP3D_SPEED=1 可關掉）
+  await page.evaluate((n) => NP3D_DEBUG.setSpeed(n), Number(process.env.NP3D_SPEED || 4));
 
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const use = (id) => ev((i) => {

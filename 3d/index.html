@@ -107,6 +107,10 @@
     <h2 id="card-title" class="card-title"></h2>
     <div id="card-lines" class="card-lines"></div>
     <dl id="card-stats" class="stats" hidden></dl>
+    <div id="card-log-wrap" class="patrol" hidden>
+      <p class="patrol-head">值班日誌・巡邏紀錄</p>
+      <ol id="card-log" class="patrol-log"></ol>
+    </div>
     <button type="button" id="card-go" class="btn primary">繼續</button>
   </div>
 </section>
@@ -155,6 +159,7 @@
     <div id="end-text" class="end-text"></div>
     <p id="end-hint" class="end-hint"></p>
     <div class="end-actions">
+      <button type="button" id="end-retry5" class="btn primary" hidden>從 05:00 重來</button>
       <button type="button" id="end-retry" class="btn primary">重來這一夜</button>
       <button type="button" id="end-gallery" class="btn">結局收藏</button>
       <button type="button" id="end-title-btn" class="btn ghost">回到標題</button>
@@ -190,7 +195,15 @@
 <script src="js/textures.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/world.js"></script>
-<script src="js/director.js"></script>
+<script src="js/director/base.js"></script>
+<script src="js/director/flow.js"></script>
+<script src="js/director/threeam.js"></script>
+<script src="js/director/cctv.js"></script>
+<script src="js/director/phone.js"></script>
+<script src="js/director/seventh.js"></script>
+<script src="js/director/events.js"></script>
+<script src="js/director/ambient.js"></script>
+<script src="js/director/index.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

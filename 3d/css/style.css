@@ -1436,3 +1436,45 @@ body.cine .touch {
 .hint.out { opacity: 0; }
 .hint .key[hidden] { display: none; }
 body.cine .hint { opacity: 0; }
+
+/* 每夜結算：巡邏紀錄（寫在值班日誌上；紅筆那行不是你寫的） */
+.patrol {
+  margin: 18px 0 6px;
+  padding: 14px 16px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 2px;
+  text-align: left;
+}
+.patrol-head {
+  margin: 0 0 8px;
+  font-family: var(--font-ui);
+  font-size: var(--step--2);
+  letter-spacing: 0.15em;
+  color: var(--ink-soft);
+}
+.patrol-log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.patrol-log li {
+  display: grid;
+  grid-template-columns: 4.6em 1fr;
+  gap: 8px;
+  font-family: var(--font-hand);
+  font-size: var(--step--1);
+  line-height: 1.5;
+}
+.patrol-log .log-rule {
+  font-family: var(--font-mono);
+  font-size: var(--step--2);
+  color: var(--ink-soft);
+  padding-top: 0.15em;
+}
+.patrol-log li.forged .log-text {
+  color: #9c2a20;
+  transform: rotate(-0.6deg);
+}

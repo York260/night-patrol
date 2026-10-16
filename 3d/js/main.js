@@ -1453,7 +1453,7 @@
   }
 
   /** 夜晚開場與結算的文字卡 */
-  function card({ kicker, title, lines, stats, button }) {
+  function card({ kicker, title, lines, stats, button, log }) {
     return new Promise((resolve) => {
       releasePointer();
       $('card-kicker').textContent = kicker || '';
@@ -1466,6 +1466,22 @@
         p.textContent = fmt(l);
         p.style.setProperty('--d', i);
         body.append(p);
+      });
+      // 巡邏紀錄（值班日誌）：一條守則一行；紅筆那行不是你寫的
+      const lg = $('card-log');
+      lg.innerHTML = '';
+      $('card-log-wrap').hidden = !(log && log.length);
+      (log || []).forEach((e) => {
+        const li = document.createElement('li');
+        if (e.forged) li.className = 'forged';
+        const n = document.createElement('span');
+        n.className = 'log-rule';
+        n.textContent = `第 ${e.rule} 條`;
+        const t = document.createElement('span');
+        t.className = 'log-text';
+        t.textContent = fmt(e.text);
+        li.append(n, t);
+        lg.append(li);
       });
       const st = $('card-stats');
       st.innerHTML = '';
@@ -1579,17 +1595,33 @@
     return { night: 1, name: '', san: 100, clues: [], flags: [], warnings: 0, missed: 0, marks: {} };
   }
 
-  async function startNight(base) {
+  // 第三夜 05:00 的重來點：走上 6F 樓梯、要進七樓之前記下來；只在這一局有效
+  let checkpoint = null;
+  const VOLATILE_NF = ['on7', 'shaky', 'flashScale', 'timeFrozen', 'noRun', 'lockedIn', 'sanDead'];
+
+  function takeCheckpoint() {
+    const nf = clone(S.nf);
+    VOLATILE_NF.forEach((k) => delete nf[k]);
+    checkpoint = {
+      night: S.night, name: S.name, san: S.san, battery: S.battery, cps: [...S.cps], clues: [...S.clues],
+      flags: [...S.flags], warnings: S.warnings, missed: S.missed, marks: clone(S.marks), time: S.time, nf,
+    };
+  }
+
+  async function startNight(base, resume = null) {
     abortAll();
+    if (!resume) checkpoint = null;
     mode = 'card';
     $('title').hidden = true;
     $('ending').hidden = true;
     $('hud').hidden = true;
     $('touch').hidden = true;
-    nightBase = clone(base);
-    store.set(KEYS.save, nightBase);
+    if (!resume) {
+      nightBase = clone(base);
+      store.set(KEYS.save, nightBase);
+    }
     Object.assign(S, clone(base));
-    if (S.night > 1) S.san = clamp(S.san + 25, 0, 100);
+    if (S.night > 1 && !resume) S.san = clamp(S.san + 25, 0, 100);
     S.battery = 100;
     S.flash = false;
     S.cps = [];
@@ -1619,6 +1651,23 @@
     renderHud();
     fx.fade = 1;
     fx.fadeTarget = 1;
+    if (resume) {
+      // 從 05:00 重來：狀態回到要上七樓之前，人站在 6F 的樓梯口
+      S.san = resume.san;
+      S.battery = resume.battery;
+      S.cps = [...resume.cps];
+      // 互動登記時已經抓住 S.nf 這個物件，所以要填進去，不能換掉
+      Object.assign(S.nf, clone(resume.nf), { resumed: true });
+      S.time = resume.time;
+      S.signedIn = true;
+      window.NP3D_DIRECTOR.onResume?.(G);
+      teleport('6F', 2.6, -2.0, -Math.PI / 2);
+      applyLights();
+      renderHud();
+      beginPlay();
+      toast('05:00。樓梯間的方向，傳來一聲很輕的開門聲。');
+      return;
+    }
     const intro = D.INTROS[S.night].map((l) => (typeof l === 'function' ? l(S) : l));
     await card({ kicker: `${NIGHT_NAMES[S.night]}・21:58`, title: NIGHT_NAMES[S.night], lines: intro, button: '開始值班' });
     beginPlay();
@@ -1652,6 +1701,7 @@
       title: `${NIGHT_NAMES[S.night]}結束`,
       lines,
       stats: [['打卡', `${S.cps.length} / 5`], ['理智', String(Math.round(S.san))], ['新的線索', tonight.length ? tonight.join('、') : '沒有']],
+      log: window.NP3D_DIRECTOR.patrolLog?.(G) || [],
       button: S.warnings >= 2 ? '隔天早上' : '迎接下一夜',
     });
     if (S.warnings >= 2) {
@@ -1694,6 +1744,7 @@
     });
     $('end-hint').textContent = e.hint;
     $('end-retry').textContent = `重來${NIGHT_NAMES[nightBase ? nightBase.night : 1]}`;
+    $('end-retry5').hidden = !(checkpoint && checkpoint.night === S.night && id !== 'E_TRUE');
     $('ending').hidden = false;
     AU.play(e.kind === '壞結局' ? 'sting' : 'page');
     AU.setTension(100);
@@ -1963,6 +2014,11 @@
       store.set(KEYS.settings, settings);
     });
     $('end-retry').addEventListener('click', () => startNight(nightBase || freshState()));
+    $('end-retry5').addEventListener('click', () => {
+      if (!checkpoint) return;
+      const cp = checkpoint;
+      startNight({ night: cp.night, name: cp.name, san: cp.san, clues: cp.clues, flags: cp.flags, warnings: cp.warnings, missed: cp.missed, marks: cp.marks }, cp);
+    });
     $('end-gallery').addEventListener('click', showGallery);
     $('end-title-btn').addEventListener('click', showTitle);
     $('book-close').addEventListener('click', closeBook);
@@ -1999,9 +2055,10 @@
   let last = performance.now();
   let elapsed = 0;
 
-  function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000);
-    last = now;
+  // 測試用：每畫一幀模擬幾步（遊戲邏輯變快，但不多花渲染時間）。正式遊戲永遠是 1
+  let simSteps = 1;
+
+  function simulate(dt) {
     elapsed += dt;
     const worldPaused = mode !== 'play' || !!modal;
     if (mode === 'play' && !modal) {
@@ -2022,14 +2079,18 @@
     tick(dt, worldPaused);
     if (!worldPaused || mode === 'title') updateTweens(dt);
     if (!worldPaused || mode === 'title') updateFigures(dt, elapsed);
-    world.M.led.color.setHex(Math.floor(elapsed * 1.3) % 2 ? 0xff2a1a : 0x2a0805);
     updateCamera(dt, elapsed);
     updateLights(dt, elapsed);
     updateFx(dt);
-    if (mode === 'play') {
-      updateFocus();
-      if (Math.floor(elapsed * 4) !== Math.floor((elapsed - dt) * 4)) renderHud();
-    }
+    if (mode === 'play' && Math.floor(elapsed * 4) !== Math.floor((elapsed - dt) * 4)) renderHud();
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    for (let i = 0; i < simSteps; i++) simulate(i === 0 ? dt : 0.05);
+    world.M.led.color.setHex(Math.floor(elapsed * 1.3) % 2 ? 0xff2a1a : 0x2a0805);
+    if (mode === 'play') updateFocus();
     updateMonitors(elapsed);
     post.mat.uniforms.time.value = elapsed;
     if (S.area === '1F') renderFeeds();
@@ -2085,6 +2146,7 @@
     },
     endGame,
     endNight: () => endNight(),
+    checkpoint: () => takeCheckpoint(),
     say, think, toast, objective, clock: () => clock(),
     choice, note, nameInput, signSheet,
     san: (d, o) => changeSan(d, o),
@@ -2274,6 +2336,8 @@
     G, S, P,
     get world() { return world; },
     setTime: (m) => (S.time = m),
+    /** 測試用快轉：每幀模擬 n 步（1–8） */
+    setSpeed: (n) => (simSteps = Math.max(1, Math.min(8, Math.round(n)))),
     start: () => startNight(freshState()),
     startNight: (b) => startNight(b),
     begin: () => {

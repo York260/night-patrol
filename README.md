@@ -40,7 +40,7 @@ docs/GDD.md             遊戲設計文件
 tools/validate.mjs      內容與公平性驗證
 tools/build-artifact.mjs  合併成單一 HTML 檔（dist/night-patrol.html）
 tests/playthrough.cjs   Playwright 自動遊玩測試
-3d/                     3D 版（data、textures、audio、world、director、main）
+3d/                     3D 版（data、textures、audio、world、main；劇情在 3d/js/director/）
 docs/GDD-3D.md          3D 版設計文件
 tools/build-3d.mjs      合併成單一 HTML 檔（dist/night-patrol-3d.html）
 tests/smoke-3d.cjs      3D 版自動測試（Playwright + SwiftShader）
