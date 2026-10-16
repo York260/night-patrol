@@ -5,7 +5,7 @@
  *
  *   第一夜：開場簽到 → 搭電梯停 4 樓（不動）→ 抵達 2F 打卡 → 樓梯遇到 7F → 不回頭下樓
  *          → 03:00 鎖在保全室 → 開門 → 結局「敲門聲」
- *   第三夜：05:00 上七樓 → 照著影子走 → 「耳東陳」→ 不回頭帶老陳出來 → 06:00 推門 → 結局「交班」
+ *   第三夜：05:00 上七樓 → 照著影子走 → 拍對的老陳 → 不回頭帶他出來 → 06:00 推門 → 結局「交班」
  *
  * 需要 playwright 與 three@0.149.0（或用 NP3D_THREE 指定 three.min.js 路徑）。
  * 只跑第三夜：ONLY3=1 node tests/smoke-3d.cjs
@@ -145,14 +145,20 @@ async function main() {
   await page.waitForTimeout(800);
   const r1 = await walk(-1.0, 28.5, Math.PI, -0.5);
   assert.notEqual(r1, 'ending', '照著影子走不應該失敗');
-  await pick(1);
-  await pick(1);
+  // 走廊盡頭坐著兩個老陳：走到真的那個（有影子、牆上的字是正的）身後，拍他的肩膀
+  await until(() => NP3D_DEBUG.interactables.some((x) => x.id === 'tap-0') && NP3D_DEBUG.P.moveLock === 0);
+  await ev(() => {
+    const G = NP3D_DEBUG.G;
+    const A7 = G.world.areas['7F'];
+    G.P.pos.set(A7.ox + A7.props.chen.position.x, 0, 29.4);
+  });
+  await use('tap-0');
   await until(() => NP3D_DEBUG.P.moveLock === 0 && NP3D_DEBUG.P.pos.z < 28);
   await page.waitForTimeout(1200);
   await walk(27.0, 0.2, 0, -0.4);
   await until(() => NP3D_DEBUG.S.area === '6F' && !NP3D_DEBUG.P.rail);
   assert.equal(await ev(() => !!NP3D_DEBUG.S.nf.rescued), true);
-  console.log('✓ 七樓：照著影子走、耳東陳、不回頭，救出老陳');
+  console.log('✓ 七樓：照著影子走、選對老陳、不回頭，救出他');
   await ev(() => {
     NP3D_DEBUG.setTime(481);
     NP3D_DEBUG.G.teleport('1F', 0, 22, 0);

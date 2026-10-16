@@ -72,7 +72,7 @@
     }
     if (n === 1) {
       nf.loops7 = (nf.loops7 || 0) + 1;
-      N.logAct(G, 'stairs7', '3・10', '樓梯間的標示變成 7F。你繼續往上走。');
+      N.logAct(G, 'stairs7', '3・9', '樓梯間的標示變成 7F。你繼續往上走。');
       G.san(-7);
       if (nf.loops7 < 3) {
         await G.useStairs('up', { area: '7F', arrive: 'below', loop: true });
@@ -185,7 +185,7 @@
     G.fade(0, 0.5).catch(() => {});
     await G.rail(arr, 1.2, '1F');
     G.unlock();
-    N.logAct(G, 'stairs7', '3・10', looked ? '樓梯間的標示變成 7F。你轉身往下走，途中回頭了。' : '樓梯間的標示變成 7F。你轉身往下走，沒有回頭。');
+    N.logAct(G, 'stairs7', '3・9', looked ? '樓梯間的標示變成 7F。你轉身往下走，途中回頭了。' : '樓梯間的標示變成 7F。你轉身往下走，沒有回頭。');
     G.san(looked ? (n === 1 ? -18 : -20) : -5);
   }
 
@@ -281,59 +281,92 @@
     if (fail === 'light') return N.die(G, 'E_LIGHT', () => noShadow(G));
     if (fail) return N.die(G, 'E_7F', () => darkCorridor(G));
 
-    // 老陳
+    // 走廊盡頭：兩個老陳，都背對你在牆上寫字。真的那個有影子，牆上的字是正的
+    const real = chen;
+    const fake = A7.props.fakeChen;
+    const both = N.R.fakeGone ? [real] : [real, fake];
+    G.aux({ area: '7F', pos: [0, 0.55, 29.4], target: [0, 1.3, 31.9], intensity: 2.2, angle: 0.95, color: 0xffcf96 });
+    nf.flashScale = 0.6;
+    both.forEach((f) => {
+      f.userData.setAnim('write', { track: false });
+      f.userData.head.rotation.set(0, 0, 0);
+    });
+    const headOf = (f) => A7.w(f.position.x, 0.95, f.position.z - 0.3);
+    G.cine(true);
     G.lock();
-    const chenHead = A7.anchors.chen;
-    await G.lookAt(chenHead, 0.8);
-    await G.say('「你是誰？」', { who: 'chen', pos: chenHead });
-    const a = await G.choice('他沒有回頭。', ['「我是來交班的。」', '「老陳，我來帶你回去。」']);
-    chen.userData.setAnim('idle', { track: false });
-    await G.say(a === 0 ? '「交班啊。好久沒聽到這兩個字了。」' : '「回去？回哪裡去？」', { who: 'chen', pos: chenHead });
-    await G.say('「先回答我一個問題。它學什麼都學得很像，就是學不會這個。」', { who: 'chen', pos: chenHead });
-    await G.say('「我姓陳。怎麼寫？」', { who: 'chen', pos: chenHead });
-    const b = await G.choice('「我姓陳。怎麼寫？」', ['「耳東陳。」', '「耳車陣。」']);
-    if (b === 1) {
-      await G.say('「……你也是它。」', { who: 'chen', pos: chenHead });
-      // 他轉回去，繼續在牆上寫字
-      chen.userData.setAnim('write', { track: false });
-      await G.wait(1.2);
-      G.san(-30);
+    await G.lookAt(A7.w(0, 1.2, 31.2), 1.0);
+    if (both.length === 2) {
+      await G.say('「是你嗎？」', { who: 'chen', pos: headOf(both[0]) });
+      await G.say('「是你嗎？帶我回去。」', { who: 'chen', pos: headOf(both[1]) });
+    } else {
+      await G.say('「是你嗎？帶我回去。」', { who: 'chen', pos: headOf(real) });
+    }
+    G.cine(false);
+    G.unlock();
+    // 走上前，拍他的肩膀
+    let chosen = null;
+    const ids = both.map((f, i) => {
+      const id = `tap-${i}`;
+      G.addInteract({ id, area: '7F', pos: A7.w(f.position.x, 1.0, f.position.z - 0.2), reach: 1.7, angle: 0.55, label: '拍他的肩膀', when: () => !chosen, use: () => (chosen = f) });
+      return id;
+    });
+    const picked = await G.waitUntil(() => !!chosen || G.pos.z < 22 || G.area !== '7F', 900);
+    ids.forEach((id) => G.removeInteract(id));
+    if (!picked || !chosen) {
+      // 你沒有帶任何人走
+      G.san(-10);
       nf.chenLost = true;
       await leave7(G);
       return;
     }
-    // 他第一次回頭看你
-    await G.tween(1.4, (k) => (chen.userData.head.rotation.y = k * PI * 0.75));
-    await G.say('「好，我們走。」', { who: 'chen', pos: chenHead });
-    await G.say('「你走前面，一直照著影子，不要回頭。我跟著你的影子走。」', { who: 'chen', pos: chenHead });
+    const isReal = chosen === real;
+    G.lock();
+    const ch = headOf(chosen);
+    await G.lookAt(ch, 0.6);
+    chosen.userData.setAnim('idle', { track: false });
+    await G.tween(1.4, (k) => (chosen.userData.head.rotation.y = k * PI * 0.75));
+    await G.say('「你來了。」', { who: 'chen', pos: ch });
+    await G.say('「你走前面，一直照著影子，不要回頭。我跟著你的影子走。」', { who: 'chen', pos: ch });
     await G.fade(1, 0.5);
-    chen.visible = false;
+    chosen.visible = false;
     G.teleport('7F', 0, 27.2, 0);
     G.setPitch(-0.45);
-    // 現在光在身後（老陳的燈），影子往門口延伸
+    nf.flashScale = 0.25;
+    // 現在光在身後（盡頭的燈），影子往門口延伸
     G.aux({ area: '7F', pos: [-0.5, 2.0, 31.2], target: [0, 0, 16], intensity: 2.0, angle: 0.8, color: 0xffc27a });
     const invisible = (h) => h.obj.traverse((o) => {
       if (o.isMesh) o.material = G.world.M.invisible;
     });
-    const chenShadow = fig(G, 'chen', '7F', 0, 28.4, 0, { anim: 'walk' });
-    invisible(chenShadow);
+    // 真的老陳有影子：地上會有兩個影子。帶錯了人，地上只有你自己的
+    const chenShadow = isReal ? fig(G, 'chen', '7F', 0, 28.4, 0, { anim: 'walk' }) : null;
+    if (chenShadow) invisible(chenShadow);
     let third = null;
     G.unlock();
     await G.fade(0, 0.6);
     let result = null;
     let lastZ = G.pos.z;
+    let stepT = 0;
     await new Promise((resolve) => {
       const off = G.onFrame((dt) => {
         const z = G.pos.z;
         const sp = Math.abs(z - lastZ) / Math.max(dt, 0.001);
         lastZ = z;
-        chenShadow.setPos(G.pos.x - A7.ox, z + 1.3);
-        chenShadow.anim('walk', { speed: Math.min(1.4, sp) });
+        if (chenShadow) {
+          chenShadow.setPos(G.pos.x - A7.ox, z + 1.3);
+          chenShadow.anim('walk', { speed: Math.min(1.4, sp) });
+        } else if (sp > 0.3) {
+          // 身後一直有腳步聲，地上卻只有一個影子
+          stepT += dt;
+          if (stepT > 0.62) {
+            stepT = 0;
+            G.sfx('step', G.pos.clone().add(G.V3(0, 0.2, 1.3)), { mat: 'concrete' });
+          }
+        }
         if (third) {
           third.setPos(G.pos.x - A7.ox + 0.3, z + 2.7);
           third.anim('walk', { speed: Math.min(1.4, sp) });
         }
-        if (!third && z < 15) {
+        if (isReal && !third && z < 15) {
           // 地上的影子，從兩個變成三個
           third = fig(G, 'tall', '7F', 0.3, z + 2.7, 0, { anim: 'walk' });
           invisible(third);
@@ -348,8 +381,32 @@
         }
       });
     });
-    chenShadow.remove();
+    if (chenShadow) chenShadow.remove();
     if (third) third.remove();
+    if (result === 'back' && !isReal) {
+      // 你回頭了。跟在你身後的，名牌上的字是反的
+      G.lock();
+      G.cine(true);
+      const p = G.pos;
+      const it = fig(G, 'chen', '7F', p.x - A7.ox, p.z + 1.1, PI, { tag: '陳', mirrorTag: true, track: true });
+      it.obj.traverse((o) => {
+        if (o.isMesh) o.castShadow = false;
+      });
+      it.face(p.x, p.z);
+      G.sfx('sting');
+      await G.lookAt(it.headPos, 0.35);
+      await G.say('「你看到了。」', { who: 'chen', pos: it.headPos });
+      await N.flicker(G, 2, 0.25);
+      it.remove();
+      fake.visible = false;
+      N.R.fakeGone = true;
+      G.cine(false);
+      G.unlock();
+      G.san(-15);
+      // 它不見了。走廊盡頭，現在只剩一個人
+      await leave7(G);
+      return;
+    }
     if (result === 'back') {
       // 身後空無一人，只有一支紅筆在地上滾了兩圈
       G.sfx('sting');
@@ -372,8 +429,12 @@
       await leave7(G);
       return;
     }
-    nf.rescued = true;
-    G.addFlag('rescued');
+    if (isReal) {
+      nf.rescued = true;
+      G.addFlag('rescued');
+    } else {
+      nf.fakeChen = true;
+    }
     await leave7(G);
     N.R.compArea = null;
     companion(G);
@@ -437,7 +498,11 @@
   function companion(G) {
     if (N.R.compArea !== G.area || !N.R.companion) {
       if (N.R.companion) N.R.companion.remove();
-      N.R.companion = fig(G, 'chen', G.area, G.pos.x - A(G, G.area).ox, G.pos.z + 1.5, 0, { tag: '陳' });
+      const isFake = !!G.nf.fakeChen;
+      N.R.companion = fig(G, 'chen', G.area, G.pos.x - A(G, G.area).ox, G.pos.z + 1.5, 0, { tag: '陳', mirrorTag: isFake });
+      if (isFake) N.R.companion.obj.traverse((o) => {
+        if (o.isMesh) o.castShadow = false;
+      });
       N.R.compArea = G.area;
     }
     const c = N.R.companion;

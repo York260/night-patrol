@@ -1478,3 +1478,9 @@ body.cine .hint { opacity: 0; }
   color: #9c2a20;
   transform: rotate(-0.6deg);
 }
+
+/* 紙條上的公司章：老陳的是正的，它描的是反的 */
+.note-card { position: relative; }
+.note-stamp .stamp { right: 18px; bottom: 58px; width: 64px; height: 64px; }
+.clue.stamped { position: relative; padding-right: 76px; min-height: 76px; }
+.clue-stamp .stamp { right: 8px; bottom: 8px; width: 58px; height: 58px; }

@@ -73,6 +73,25 @@
     chen.visible = n !== 2;
     chen.userData.setAnim('write', { track: false });
     chen.userData.head.rotation.set(0, n === 3 ? PI : 0, 0);
+    // 第三夜：走廊盡頭坐著兩個老陳，一真一假，左右隨機
+    const fake = P7.fakeChen;
+    const two = n === 3;
+    N.R.realSide = Math.random() < 0.5 ? -1 : 1;
+    chen.position.x = two ? N.R.realSide * 0.75 : 0.15;
+    fake.visible = two;
+    fake.position.x = -N.R.realSide * 0.75;
+    fake.userData.setAnim('write', { track: false });
+    fake.userData.head.rotation.set(0, two ? PI : 0, 0);
+    fake.traverse((o) => {
+      if (o.isMesh) o.castShadow = false; // 它沒有影子
+    });
+    P7.endWall.visible = !two;
+    for (const side of ['-1', '1']) {
+      const m = P7.endHalves[side];
+      m.visible = two;
+      m.material.map = Number(side) === N.R.realSide ? P7.endTex.normal : P7.endTex.mirror;
+      m.material.needsUpdate = true;
+    }
     if (n === 2) {
       // 第二夜：老陳站在走廊中間，舉著一張紙
       const f = fig(G, 'chen', '7F', 0, 22, PI, { anim: 'hold', tag: '陳' });
@@ -115,21 +134,6 @@
       G.addInteract({ id: 'freeBattery', area: 'B1', pos: A(G, 'B1').anchors.freeBattery, reach: 1.6, label: '一盒全新的電池', when: () => !nf.battery, use: () => N.freeBattery(G) });
       G.addInteract({ id: 'tv', area: '2F', pos: A(G, '2F').anchors.tv, reach: 3.2, angle: 0.4, label: '電視', when: () => !nf.tv, use: () => N.tv(G) });
       G.addInteract({ id: 'roster', area: '5F', pos: A(G, '5F').anchors.roster, reach: 1.8, label: '值班表', when: () => !nf.roster, use: () => N.roster(G) });
-      // 打卡鐘縫隙裡露出來的紙條（打卡之後才看得到）
-      const P6 = A(G, '6F');
-      if (!N.paper6) {
-        N.paper6 = new THREE.Mesh(new THREE.PlaneGeometry(0.07, 0.1), new THREE.MeshBasicMaterial({ color: 0xe9e2cc, side: THREE.DoubleSide }));
-        const pa = P6.anchors.punch;
-        N.paper6.position.set(pa.x - P6.ox, pa.y + 0.12, pa.z);
-        N.paper6.rotation.set(0, 0, 0.35);
-        P6.group.add(N.paper6);
-      }
-      N.paper6.visible = false;
-      G.addInteract({ id: 'note6', area: '6F', pos: P6.anchors.punch, reach: 1.6, label: '打卡鐘縫隙裡的紙條', when: () => G.S.cps.includes('6F') && !G.S.clues.includes('c1'), use: async () => {
-        N.paper6.visible = false;
-        await G.note('c1');
-        G.san(-2, { silent: true });
-      } });
       G.addInteract({ id: 'roof', area: '6F', pos: A(G, '6F').anchors.roofDoor, reach: 1.8, label: '頂樓鐵門', when: () => !nf.roofLook, use: async () => {
         nf.roofLook = true;
         // 三道鎖、紅線；門的另一邊，有人輕輕敲了兩下
@@ -165,6 +169,27 @@
       const C = A(G, '3F');
       N.R.students = C.props.desks.map((d, i) => fig(G, i % 3 === 0 ? 'child' : 'adult', '3F', d.x - C.ox, d.z, PI / 2, { seated: true, variant: i, anim: 'write' }));
       N.R.double = fig(G, 'self', '2F', -4.4, 7.5, -PI / 2, { seated: true, tag: G.S.name || '　' });
+    }
+
+    // 打卡鐘裡夾著的紙條：老陳只用這個管道（打卡之後，紙條從縫隙露出來）
+    N.papers = N.papers || {};
+    Object.values(N.papers).forEach((m) => (m.visible = false));
+    const notes = G.D.PUNCH_NOTES[n] || {};
+    for (const [floor, clue] of Object.entries(notes)) {
+      const Ar = A(G, floor);
+      if (!N.papers[floor]) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(0.07, 0.1), new THREE.MeshBasicMaterial({ color: 0xe9e2cc, side: THREE.DoubleSide }));
+        const pa = Ar.anchors.punch;
+        m.position.set(pa.x - Ar.ox, pa.y + 0.12, pa.z);
+        m.rotation.set(0, 0, 0.35);
+        Ar.group.add(m);
+        N.papers[floor] = m;
+      }
+      G.addInteract({ id: `note-${floor}`, area: floor, pos: Ar.anchors.punch, reach: 1.6, label: '打卡鐘縫隙裡的紙條', when: () => G.S.cps.includes(floor) && !G.S.clues.includes(clue), use: async () => {
+        N.papers[floor].visible = false;
+        await G.note(clue);
+        G.san(-2, { silent: true });
+      } });
     }
 
     // 電話（第二夜）
@@ -262,6 +287,7 @@
       return;
     }
     if (G.night < 3) return;
+    if (G.nf.fakeChen) return N.die(G, 'E_FAKE', () => fakeExit(G));
     const rescued = !!G.nf.rescued;
     return N.die(G, rescued ? 'E_TRUE' : 'E_DAWN', async () => {
       const L = A(G, '1F');
@@ -294,6 +320,35 @@
     });
   }
 
+  /** 帶錯了人：走進早晨，早餐店老闆問你「你一個人？」；回頭，他就在你身後，地上只有你的影子 */
+  async function fakeExit(G) {
+    const L = A(G, '1F');
+    G.sfx('door');
+    dawnLight(G, 1);
+    const c = N.R.companion;
+    N.R.compFree = true;
+    if (c) c.walkTo(L.ox + 0.7, 28.0, 1.15);
+    await G.rail([[G.pos.x - L.ox, 0, G.pos.z], [0, 0, 23.4], [0, 0, 28.6]], 3.6, '1F');
+    const owner = fig(G, 'adult', '1F', -4.8, 31.5, 0, { variant: 4, track: true });
+    owner.face(G.pos.x, G.pos.z);
+    await G.lookAt(owner.headPos, 0.9);
+    await G.say('「你一個人？」', { who: 'man', pos: owner.headPos });
+    await G.wait(0.4);
+    if (c) {
+      c.setPos(G.pos.x - L.ox, G.pos.z - 0.9);
+      c.face(G.pos.x, G.pos.z);
+      c.track(true, true);
+    }
+    G.sfx('sting');
+    await G.lookAt(c ? c.headPos : W(G, '1F', 0, 1.6, 27), 0.5);
+    await G.wait(1.0);
+    // 低頭：晨光從背後照過來，地上只有一個影子
+    G.aux({ area: '1F', pos: [0.3, 6, 22], target: [0, 0, 31], intensity: 3.2, angle: 0.45, color: 0xffe2b8 });
+    G.shadow(true);
+    await G.lookAt(W(G, '1F', 0, 0, G.pos.z + 1.8), 1.0);
+    await G.wait(1.2);
+  }
+
   function dawnLight(G, k) {
     const L = A(G, '1F');
     L.props.sky.material = G.world.M.skyDawn;
@@ -305,11 +360,13 @@
 
   function onPunch(G, id) {
     if (G.S.cps.length === 5 && G.time < T.LOCK) G.toast('五個打卡點都完成了。回保全室坐著，時間會過得比較快。');
-    if (G.night === 1 && id === '6F' && N.paper6) {
-      N.paper6.visible = true;
+    const clue = (G.D.PUNCH_NOTES[G.night] || {})[id];
+    const paper = N.papers && N.papers[id];
+    if (clue && paper && !G.S.clues.includes(clue)) {
+      paper.visible = true;
       G.run(async () => {
         await G.wait(0.3);
-        await G.lookAt(N.paper6.getWorldPosition(new THREE.Vector3()), 0.6);
+        await G.lookAt(paper.getWorldPosition(new THREE.Vector3()), 0.6);
       });
     }
   }
@@ -375,7 +432,7 @@
     }
 
     // 老陳跟著你
-    if (G.nf.rescued && !N.R.compFree) N.companion(G);
+    if ((G.nf.rescued || G.nf.fakeChen) && !N.R.compFree) N.companion(G);
 
     // 看不見的導演：03:00 以外，讓玩家一直覺得它在附近
     N.ambient(G, dt);
@@ -444,9 +501,9 @@
       const has = (k) => src.find((e) => e.key === k);
       const cands = [];
       const ph = has('phone');
-      if (!ph || /沒有接/.test(ph.text)) cands.push({ rule: '9', text: '保全室的電話響了。你接起來，照林主任說的上了頂樓。' });
+      if (!ph || /沒有接/.test(ph.text)) cands.push({ rule: '電話', text: '保全室的電話響了。你接起來，照林主任說的上了頂樓。' });
       const st = has('stairs7');
-      if (st && /往下走/.test(st.text)) cands.push({ rule: '3・10', text: '樓梯間的標示變成 7F。你照著紅筆字，繼續往上走了。' });
+      if (st && /往下走/.test(st.text)) cands.push({ rule: '3・9', text: '樓梯間的標示變成 7F。你照著紅筆字，繼續往上走了。' });
       const th = has('three');
       if (th && /鎖上了門/.test(th.text)) cands.push({ rule: '5', text: '03:00 有人敲門，說他是老陳。你開了門，跟他交了班。' });
       if (!cands.length) cands.push({ rule: '1', text: '下班之前，你在日誌的下班欄先簽了一次名。' });

@@ -27,7 +27,7 @@
     N.R.ringShake = null;
     G.nf.phoneDone = true;
     if (timeout) {
-      N.logAct(G, 'phone', '9', '保全室的電話響了三十三聲。你沒有接。');
+      N.logAct(G, 'phone', '電話', '保全室的電話響了三十三聲。你沒有接。');
       G.run(async () => {
         G.sfx('sms');
         await G.wait(0.5);
@@ -43,7 +43,7 @@
     await G.say('「{name}嗎？我林主任。」', { who: 'boss', pos: ph });
     await G.say('「頂樓的門沒鎖好，你現在上去，把門打開，再重新鎖一次。快點。」', { who: 'boss', pos: ph });
     const i = await G.choice('電話裡的林主任在等你回答。聲音很像，太像了。', ['「好，我馬上上去。」', '掛掉電話。', '「主任，你現在在哪裡？」']);
-    N.logAct(G, 'phone', '9', i === 1 ? '保全室的電話響了。你接起來，又掛掉了。' : '保全室的電話響了。你接了，問林主任在哪裡。');
+    N.logAct(G, 'phone', '電話', i === 1 ? '保全室的電話響了。你接起來，又掛掉了。' : '保全室的電話響了。你接了，問林主任在哪裡。');
     if (i === 0) return N.die(G, 'E_PHONE', () => phoneScene(G));
     if (i === 1) {
       G.sfx('laugh', ph);

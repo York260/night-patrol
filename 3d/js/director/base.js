@@ -6,7 +6,7 @@
   'use strict';
 
   // 這一夜的執行期資料（R）、觸發過的一次性事件、腳本生出的人物與道具，換夜時清掉
-  const N = (window.NP3D_DIR = { R: {}, fired: new Set(), spawned: [], extras: [], lobbyAmbient: null, paper6: null });
+  const N = (window.NP3D_DIR = { R: {}, fired: new Set(), spawned: [], extras: [], lobbyAmbient: null, papers: {} });
   const T = { START: 30, LOCK: 300, UNLOCK: 360, DOOR7: 420, END: 480 };
   const PI = Math.PI;
 

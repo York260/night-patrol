@@ -134,7 +134,7 @@
       || (t >= T.LOCK - 2 && t < T.UNLOCK) || t >= T.END
       || G.area === '7F' || G.area === '4F'
       || (G.area === '1F' && G.inZone('guardRoom'))
-      || !!N.R.ring || G.nf.lockedIn || G.nf.on7 || G.nf.rescued
+      || !!N.R.ring || G.nf.lockedIn || G.nf.on7 || G.nf.rescued || G.nf.fakeChen
     );
   }
 

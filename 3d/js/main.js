@@ -1390,6 +1390,8 @@
       $('note-title').textContent = data.title;
       $('note-text').textContent = fmt(data.text);
       $('note-card').classList.toggle('hand', !!data.hand);
+      // 老陳的紙條蓋公司的章；它描出來的章是反的
+      $('note-stamp').innerHTML = data.stamp ? stamp(data.stamp === 'flip', 'note') : '';
       $('note').hidden = false;
       const close = () => {
         $('note').hidden = true;
@@ -1476,7 +1478,7 @@
         if (e.forged) li.className = 'forged';
         const n = document.createElement('span');
         n.className = 'log-rule';
-        n.textContent = `第 ${e.rule} 條`;
+        n.textContent = /^[\d・]+$/.test(e.rule) ? `第 ${e.rule} 條` : e.rule;
         const t = document.createElement('span');
         t.className = 'log-text';
         t.textContent = fmt(e.text);
@@ -1555,7 +1557,11 @@
     if (hb.hand.length) html += `<article class="hb-page hb-back"><p class="hb-back-note">（第二頁背面）</p><ol class="hb-rules">${hb.hand.map((id) => ruleRow(id, photo)).join('')}</ol></article>`;
     $('book-rules').innerHTML = html;
     $('book-clues').innerHTML = S.clues.length
-      ? S.clues.map((id) => `<article class="clue${D.CLUES[id].hand ? ' hand' : ''}"><h4>${esc(D.CLUES[id].title)}</h4><p>${esc(D.CLUES[id].text)}</p></article>`).join('')
+      ? S.clues.map((id) => {
+        const c = D.CLUES[id];
+        const st = c.stamp ? `<div class="clue-stamp">${stamp(c.stamp === 'flip', `clue-${id}`)}</div>` : '';
+        return `<article class="clue${c.hand ? ' hand' : ''}${c.stamp ? ' stamped' : ''}"><h4>${esc(c.title)}</h4><p>${esc(c.text)}</p>${st}</article>`;
+      }).join('')
       : '<p class="empty">還沒有找到任何線索。巡邏時，留意那些不該出現的東西。</p>';
     document.querySelectorAll('.bk-view').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === bookView)));
   }

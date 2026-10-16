@@ -429,6 +429,7 @@ window.NP3D_WORLD = (() => {
     if (o.tag) {
       const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.08 * s, 0.034 * s), new THREE.MeshLambertMaterial({ map: TEX.nameTag(o.tag) }));
       tag.position.set(0.085 * s, tH * 0.74, 0.142 * s * P.girth);
+      if (o.mirrorTag) tag.scale.x = -1; // 它描出來的名牌，字是反的
       spine.add(tag);
     }
 
@@ -1206,7 +1207,25 @@ window.NP3D_WORLD = (() => {
       A.props.redWalls.push(A.plane(2.8, 2.4, red(50 + z), -1.39, 1.45, z, Math.PI / 2, { receive: true }));
       A.props.redWalls.push(A.plane(2.8, 2.4, red(80 + z), 1.39, 1.45, z, -Math.PI / 2, { receive: true }));
     }
-    A.plane(2.9, 2.4, red(99), 0, 1.45, 31.89, Math.PI, { receive: true });
+    A.props.endWall = A.plane(2.9, 2.4, red(99), 0, 1.45, 31.89, Math.PI, { receive: true });
+    // 第三夜：走廊盡頭坐著兩個老陳，各自在面前的半面牆上寫字。它描出來的字是反的
+    // 字寫得大，反過來才看得出來
+    const endLines = ['帶我回去', '耳東陳', '五點', '影子'];
+    const texN = window.NP3D_TEX.handwriting(endLines, { w: 256, h: 256, size: 44, seed: 131 });
+    const texM = texN.clone();
+    texM.wrapS = THREE.RepeatWrapping;
+    texM.repeat.x = -1;
+    texM.offset.x = 1;
+    texM.needsUpdate = true;
+    const half = (x) => A.plane(1.42, 2.4, new THREE.MeshLambertMaterial({ map: texN, transparent: true, alphaTest: 0.4 }), x, 1.45, 31.86, Math.PI, { receive: true });
+    A.props.endHalves = { '-1': half(-0.72), '1': half(0.72) };
+    A.props.endTex = { normal: texN, mirror: texM };
+    Object.values(A.props.endHalves).forEach((m) => (m.visible = false));
+    A.props.fakeChen = makeFigure(M, 'chen', { floor: true, tag: '陳', mirrorTag: true });
+    A.props.fakeChen.userData.setAnim('write');
+    A.props.fakeChen.position.set(-0.75, 0, 30.9);
+    A.props.fakeChen.visible = false;
+    A.group.add(A.props.fakeChen);
     A.props.stairText = A.sign(
       window.NP3D_TEX.handwriting(['繼續往上，出口在上面。'], { w: 256, h: 64, size: 22, seed: 7 }),
       1.4, 0.35, 1.62, 2.05, -1.5, Math.PI / 2, { alpha: true },
