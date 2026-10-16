@@ -1388,7 +1388,17 @@
     AU.play('page');
     return new Promise((resolve) => {
       $('note-title').textContent = data.title;
-      $('note-text').textContent = fmt(data.text);
+      // 一張紙條上可能有兩段不同的字跡
+      const txt = $('note-text');
+      if (data.parts) {
+        txt.innerHTML = '';
+        data.parts.forEach((p) => {
+          const el = document.createElement('span');
+          el.className = `note-part ${p.style}`;
+          el.textContent = fmt(p.text);
+          txt.append(el);
+        });
+      } else txt.textContent = fmt(data.text);
       $('note-card').classList.toggle('hand', !!data.hand);
       // 老陳的紙條蓋公司的章；它描出來的章是反的
       $('note-stamp').innerHTML = data.stamp ? stamp(data.stamp === 'flip', 'note') : '';
@@ -1560,7 +1570,8 @@
       ? S.clues.map((id) => {
         const c = D.CLUES[id];
         const st = c.stamp ? `<div class="clue-stamp">${stamp(c.stamp === 'flip', `clue-${id}`)}</div>` : '';
-        return `<article class="clue${c.hand ? ' hand' : ''}${c.stamp ? ' stamped' : ''}"><h4>${esc(c.title)}</h4><p>${esc(c.text)}</p>${st}</article>`;
+        const body = c.parts ? c.parts.map((p) => `<span class="note-part ${p.style}">${esc(p.text)}</span>`).join('') : esc(c.text);
+        return `<article class="clue${c.hand ? ' hand' : ''}${c.stamp ? ' stamped' : ''}"><h4>${esc(c.title)}</h4><p>${body}</p>${st}</article>`;
       }).join('')
       : '<p class="empty">還沒有找到任何線索。巡邏時，留意那些不該出現的東西。</p>';
     document.querySelectorAll('.bk-view').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === bookView)));

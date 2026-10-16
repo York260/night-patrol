@@ -83,15 +83,20 @@
     fake.userData.setAnim('write', { track: false });
     fake.userData.head.rotation.set(0, two ? PI : 0, 0);
     fake.traverse((o) => {
-      if (o.isMesh) o.castShadow = false; // 它沒有影子
+      if (o.isMesh) o.castShadow = false;
     });
-    P7.endWall.visible = !two;
-    for (const side of ['-1', '1']) {
-      const m = P7.endHalves[side];
-      m.visible = two;
-      m.material.map = Number(side) === N.R.realSide ? P7.endTex.normal : P7.endTex.mirror;
-      m.material.needsUpdate = true;
+    // 它的影子由鏡像替身投出來：兩個都有影子，但它的影子用另一隻手寫字
+    const caster = P7.fakeCaster;
+    caster.visible = two;
+    caster.position.copy(fake.position);
+    caster.userData.anim.phase = fake.userData.anim.phase;
+    if (two) {
+      chen.userData.setAnim('reach', { track: false });
+      fake.userData.setAnim('reach', { track: false });
     }
+    caster.userData.setAnim(two ? 'reach' : 'write', { track: false });
+    P7.endWall.visible = true;
+    Object.values(P7.endHalves).forEach((m) => (m.visible = false));
     if (n === 2) {
       // 第二夜：老陳站在走廊中間，舉著一張紙
       const f = fig(G, 'chen', '7F', 0, 22, PI, { anim: 'hold', tag: '陳' });

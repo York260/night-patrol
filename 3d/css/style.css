@@ -1484,3 +1484,24 @@ body.cine .hint { opacity: 0; }
 .note-stamp .stamp { right: 18px; bottom: 58px; width: 64px; height: 64px; }
 .clue.stamped { position: relative; padding-right: 76px; min-height: 76px; }
 .clue-stamp .stamp { right: 8px; bottom: 8px; width: 58px; height: 58px; }
+
+/* 一張紙條、兩段字跡：上面潦草驚恐、寫到一半斷掉；下面工整 */
+.note-part { display: block; }
+.note-part.scrawl {
+  font-family: var(--font-hand);
+  font-size: 1.12em;
+  line-height: 1.55;
+  letter-spacing: 0.04em;
+  color: #2a2420;
+  transform: rotate(-1.6deg) skewX(-6deg);
+  transform-origin: left top;
+  margin-bottom: 1.1em;
+  text-shadow: 0.4px 0.3px 0 rgba(0, 0, 0, 0.35);
+}
+.note-part.neat {
+  font-family: var(--font-body);
+  font-size: 0.96em;
+  line-height: 1.7;
+  padding-top: 0.6em;
+  border-top: 1px dashed rgba(0, 0, 0, 0.25);
+}

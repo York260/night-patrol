@@ -525,6 +525,14 @@ window.NP3D_WORLD = (() => {
             R.elbow.rotation.x = -0.5 + Math.sin(ph * 6.3) * 0.18;
             L.sh.rotation.x = -0.2;
             break;
+          case 'reach':
+            // 舉高手臂、往斜上方寫字（影子上看得出是哪一隻手）
+            R.sh.rotation.x = -2.55 + Math.sin(ph * 3.1) * 0.06;
+            R.sh.rotation.z = 0.55 + Math.sin(ph * 2.3) * 0.05;
+            R.elbow.rotation.x = -0.35 + Math.sin(ph * 6.3) * 0.2;
+            L.sh.rotation.x = -0.1;
+            L.sh.rotation.z = -0.08;
+            break;
           case 'beckon':
             R.sh.rotation.x = -1.45;
             R.elbow.rotation.x = -0.9 + Math.sin(ph * 5.5) * 0.65;
@@ -1226,6 +1234,15 @@ window.NP3D_WORLD = (() => {
     A.props.fakeChen.position.set(-0.75, 0, 30.9);
     A.props.fakeChen.visible = false;
     A.group.add(A.props.fakeChen);
+    // 它學會了影子，但影子是它「描」出來的：左右相反（看不見的鏡像替身負責投影）
+    A.props.fakeCaster = makeFigure(M, 'chen', { floor: true });
+    A.props.fakeCaster.userData.setAnim('write');
+    A.props.fakeCaster.scale.x = -1;
+    A.props.fakeCaster.traverse((o) => {
+      if (o.isMesh) o.material = M.invisible;
+    });
+    A.props.fakeCaster.visible = false;
+    A.group.add(A.props.fakeCaster);
     A.props.stairText = A.sign(
       window.NP3D_TEX.handwriting(['繼續往上，出口在上面。'], { w: 256, h: 64, size: 22, seed: 7 }),
       1.4, 0.35, 1.62, 2.05, -1.5, Math.PI / 2, { alpha: true },

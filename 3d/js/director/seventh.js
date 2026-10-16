@@ -281,16 +281,19 @@
     if (fail === 'light') return N.die(G, 'E_LIGHT', () => noShadow(G));
     if (fail) return N.die(G, 'E_7F', () => darkCorridor(G));
 
-    // 走廊盡頭：兩個老陳，都背對你在牆上寫字。真的那個有影子，牆上的字是正的
+    // 走廊盡頭：兩個老陳，都背對你在牆上寫字，兩個都有影子。它的影子是描出來的，左右相反
     const real = chen;
     const fake = A7.props.fakeChen;
+    const caster = A7.props.fakeCaster;
     const both = N.R.fakeGone ? [real] : [real, fake];
-    G.aux({ area: '7F', pos: [0, 0.55, 29.4], target: [0, 1.3, 31.9], intensity: 2.2, angle: 0.95, color: 0xffcf96 });
+    G.aux({ area: '7F', pos: [0, 0.35, 28.6], target: [0, 1.4, 31.9], intensity: 2.4, angle: 1.0, color: 0xffcf96 });
     nf.flashScale = 0.6;
     both.forEach((f) => {
-      f.userData.setAnim('write', { track: false });
+      f.userData.setAnim('reach', { track: false });
       f.userData.head.rotation.set(0, 0, 0);
     });
+    caster.userData.setAnim('reach', { track: false });
+    caster.userData.anim.phase = fake.userData.anim.phase;
     const headOf = (f) => A7.w(f.position.x, 0.95, f.position.z - 0.3);
     G.cine(true);
     G.lock();
@@ -329,6 +332,7 @@
     await G.say('「你走前面，一直照著影子，不要回頭。我跟著你的影子走。」', { who: 'chen', pos: ch });
     await G.fade(1, 0.5);
     chosen.visible = false;
+    if (chosen === fake) caster.visible = false;
     G.teleport('7F', 0, 27.2, 0);
     G.setPitch(-0.45);
     nf.flashScale = 0.25;
@@ -337,31 +341,22 @@
     const invisible = (h) => h.obj.traverse((o) => {
       if (o.isMesh) o.material = G.world.M.invisible;
     });
-    // 真的老陳有影子：地上會有兩個影子。帶錯了人，地上只有你自己的
-    const chenShadow = isReal ? fig(G, 'chen', '7F', 0, 28.4, 0, { anim: 'walk' }) : null;
-    if (chenShadow) invisible(chenShadow);
+    // 地上有兩個影子。帶錯了人，他的影子左右是反的
+    const chenShadow = fig(G, 'chen', '7F', 0, 28.4, 0, { anim: 'walk' });
+    invisible(chenShadow);
+    if (!isReal) chenShadow.obj.scale.x = -1;
     let third = null;
     G.unlock();
     await G.fade(0, 0.6);
     let result = null;
     let lastZ = G.pos.z;
-    let stepT = 0;
     await new Promise((resolve) => {
       const off = G.onFrame((dt) => {
         const z = G.pos.z;
         const sp = Math.abs(z - lastZ) / Math.max(dt, 0.001);
         lastZ = z;
-        if (chenShadow) {
-          chenShadow.setPos(G.pos.x - A7.ox, z + 1.3);
-          chenShadow.anim('walk', { speed: Math.min(1.4, sp) });
-        } else if (sp > 0.3) {
-          // 身後一直有腳步聲，地上卻只有一個影子
-          stepT += dt;
-          if (stepT > 0.62) {
-            stepT = 0;
-            G.sfx('step', G.pos.clone().add(G.V3(0, 0.2, 1.3)), { mat: 'concrete' });
-          }
-        }
+        chenShadow.setPos(G.pos.x - A7.ox, z + 1.3);
+        chenShadow.anim('walk', { speed: Math.min(1.4, sp) });
         if (third) {
           third.setPos(G.pos.x - A7.ox + 0.3, z + 2.7);
           third.anim('walk', { speed: Math.min(1.4, sp) });
@@ -381,7 +376,7 @@
         }
       });
     });
-    if (chenShadow) chenShadow.remove();
+    chenShadow.remove();
     if (third) third.remove();
     if (result === 'back' && !isReal) {
       // 你回頭了。跟在你身後的，名牌上的字是反的
@@ -399,6 +394,7 @@
       await N.flicker(G, 2, 0.25);
       it.remove();
       fake.visible = false;
+      caster.visible = false;
       N.R.fakeGone = true;
       G.cine(false);
       G.unlock();
