@@ -1204,7 +1204,7 @@ window.NP3D_WORLD = (() => {
     const red = (seed) =>
       new THREE.MeshLambertMaterial({
         map: window.NP3D_TEX.handwriting(
-          ['守則上如果出現紅筆字，看署名', '不要開門', '不要接電話', '照著影子走', '不要回頭', '我只寫陳', '它沒有影子', '五點'],
+          ['我不寫在守則上', '紙條在打卡鐘裡', '不要開門', '不要接電話', '照著影子走', '不要回頭', '耳東陳', '它沒有影子', '五點'],
           { w: 256, h: 256, size: 18, dense: true, seed },
         ),
         transparent: true,

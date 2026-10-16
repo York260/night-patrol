@@ -16,7 +16,7 @@
     const nf = G.nf;
     if (from === '7F') return { blocked: '' };
     if (dir !== 'up') return null;
-    if (n === 3 && from === '6F' && t >= T.DOOR7 && t < T.END && !nf.chenLost && !nf.rescued) {
+    if (n === 3 && from === '6F' && t >= T.DOOR7 && t < T.END && !nf.chenLost && !nf.rescued && !nf.fakeChen) {
       // 全作高潮之前記下重來點：在七樓失敗，可以從這裡再試
       G.checkpoint();
       nf.on7 = 'seventh';
@@ -304,6 +304,8 @@
     } else {
       await G.say('「是你嗎？帶我回去。」', { who: 'chen', pos: headOf(real) });
     }
+    // 第二夜在值班表上寫了老陳名字的人：真的那個會小聲道謝（聲音從他那一邊傳來）
+    if (G.hasFlag('wrote_chen') && both.length === 2) await G.say('「……值班表上，謝謝你寫了我的名字。」', { who: 'chen', pos: headOf(real) });
     G.cine(false);
     G.unlock();
     // 走上前，拍他的肩膀

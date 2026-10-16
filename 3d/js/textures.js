@@ -652,8 +652,20 @@ window.NP3D_TEX = (() => {
     }
     ctx.fillStyle = '#a3241b';
     ctx.font = `10px ${FONT_SERIF}`;
-    ctx.fillText('第九條', 8, 40);
+    ctx.fillText('第五條', 8, 40);
     ctx.clearRect(44, 34, 20, 14);
+    // 角落一個反過來的公司章
+    ctx.save();
+    ctx.translate(50, 66);
+    ctx.scale(-1, 1);
+    ctx.strokeStyle = 'rgba(163,36,27,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 9, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.font = `6px ${FONT_SERIF}`;
+    ctx.fillText('福安', -6, 2);
+    ctx.restore();
     ctx.fillStyle = 'rgba(80,70,50,0.35)';
     ctx.beginPath();
     ctx.arc(20, 28, 5, 0, Math.PI * 2);

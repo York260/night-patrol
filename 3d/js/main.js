@@ -2307,7 +2307,7 @@
 
   async function loadFonts() {
     if (!document.fonts || !document.fonts.load) return;
-    const sample = '福安大廈守則緊急出口陳陣七樓繼續往上出口在上面明日之星補習班安心牙醫診所機房閒人勿進電池保全室專用值班日誌上班下班交班五點影子照著走不要回頭開門接電話它沒有影子手電筒一直自己的光移開管誰叫你都假裝成任何人但早餐金榜題名樓層指引招租中停車場管理室共有幾層作答時間六七第九條夜表巡邏打卡繳費機';
+    const sample = '福安大廈守則緊急出口陳陣七樓繼續往上出口在上面明日之星補習班安心牙醫診所機房閒人勿進電池保全室專用值班日誌上班下班交班五點影子照著走不要回頭開門接電話它沒有影子手電筒一直自己的光移開管誰叫你都假裝成任何人但早餐金榜題名樓層指引招租中停車場管理室共有幾層作答時間六七第九條夜表巡邏打卡繳費機帶我回去耳東紙條鐘寫裡第五條福安';
     const fams = ['"Iansui"', '"Noto Serif TC"', '"Cactus Classical Serif"', '"IBM Plex Mono"'];
     const all = Promise.all(fams.map((f) => document.fonts.load(`24px ${f}`, sample).catch(() => null)));
     await Promise.race([all, new Promise((r) => setTimeout(r, 3500))]);
